@@ -15,27 +15,20 @@ export function createApplyRouter(services: AppServices) {
     try {
       const [draft, library] = await Promise.all([services.store.getDraftShow(), services.store.getLibrary()]);
       const bundle = await services.bundleService.build(draft, library);
-      await services.raspController.applyBundle(bundle);
-      const [lastApplied, remoteStatus] = await Promise.all([services.store.getLastApplied(), services.raspController.status()]);
+      const lastApplied = await services.raspController.applyBundle(bundle);
+      const remoteStatus = await services.raspController.status();
       response.json(buildStatusResponse({ draft, lastApplied, remoteStatus, applyInProgress: false }));
     } catch (error) {
       console.error("show apply failed", error);
       try {
         const draft = await services.store.getDraftShow();
         const [lastApplied, remoteStatus] = await Promise.all([services.store.getLastApplied(), services.raspController.status()]);
-        if (error instanceof Error) {
-          const failure = lastApplied
-            ? { ...lastApplied, stderr: error.message, remoteStatus }
-            : null;
-          if (failure) {
-            await services.store.saveLastApplied(failure);
-          }
-        }
-        response.status(500).json(buildStatusResponse({ draft, lastApplied: await services.store.getLastApplied(), remoteStatus, applyInProgress: false }));
-        return;
+        const failedLastApplied = error instanceof Error && lastApplied
+          ? await services.store.saveLastApplied({ ...lastApplied, stderr: error.message, remoteStatus })
+          : lastApplied;
+        response.status(500).json(buildStatusResponse({ draft, lastApplied: failedLastApplied, remoteStatus, applyInProgress: false }));
       } catch (nestedError) {
         next(nestedError);
-        return;
       }
     } finally {
       services.runtime.applyInProgress = false;

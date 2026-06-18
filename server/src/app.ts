@@ -57,7 +57,7 @@ export function createAppServices(config: ShowManagerConfig, paths: DataRootPath
     config,
     paths,
     store,
-    mediaStore: new MediaStore(paths, store, config, new ThumbnailService()),
+    mediaStore: new MediaStore(paths, store, new ThumbnailService()),
     bundleService: new PlaylistBundleService(paths),
     raspController: new RaspController(config, paths, store),
     authService: new AuthService(config, paths),

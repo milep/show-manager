@@ -1,18 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { MediaStore } from "../server/src/services/media-store";
 import { ShowStateStore } from "../server/src/services/show-state-store";
-import { makeConfig, makeTempPaths } from "./test-helpers";
+import { makeTempPaths } from "./test-helpers";
 
 describe("MediaStore", () => {
   it("stores upload metadata", async () => {
     const paths = await makeTempPaths();
     const store = new ShowStateStore(paths);
-    const config = makeConfig(paths.root);
     const thumbnails = {
       createThumbnail: vi.fn(async () => undefined),
       probe: vi.fn(async () => ({ durationSeconds: null, width: 800, height: 600 })),
     };
-    const mediaStore = new MediaStore(paths, store, config, thumbnails as never);
+    const mediaStore = new MediaStore(paths, store, thumbnails as never);
 
     const item = await mediaStore.saveUpload({
       originalname: "frame.jpg",
@@ -29,8 +28,7 @@ describe("MediaStore", () => {
   it("rejects unsupported extension", async () => {
     const paths = await makeTempPaths();
     const store = new ShowStateStore(paths);
-    const config = makeConfig(paths.root);
-    const mediaStore = new MediaStore(paths, store, config, {
+    const mediaStore = new MediaStore(paths, store, {
       createThumbnail: vi.fn(),
       probe: vi.fn(),
     } as never);

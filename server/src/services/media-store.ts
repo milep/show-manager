@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { MediaAsset } from "../../../shared/show-schema.js";
 import type { DataRootPaths } from "./data-root.js";
-import type { ShowManagerConfig } from "../config.js";
+import { MAX_UPLOAD_BYTES } from "../config.js";
 import type { ShowStateStore } from "./show-state-store.js";
 import { ThumbnailService } from "./thumbnail-service.js";
 
@@ -23,13 +23,8 @@ export class MediaStore {
   constructor(
     private readonly paths: DataRootPaths,
     private readonly store: ShowStateStore,
-    private readonly config: ShowManagerConfig,
     private readonly thumbnails: ThumbnailService,
   ) {}
-
-  getAcceptedExtensions(): string[] {
-    return [...extensionKinds.keys()];
-  }
 
   async saveUpload(file: Express.Multer.File): Promise<MediaAsset> {
     const extension = path.extname(file.originalname).toLowerCase();
@@ -37,8 +32,8 @@ export class MediaStore {
     if (!kind) {
       throw new Error(`Unsupported media extension: ${extension || "<none>"}`);
     }
-    if (file.size > this.config.maxUploadBytes) {
-      throw new Error(`Upload exceeds limit: ${this.config.maxUploadBytes}`);
+    if (file.size > MAX_UPLOAD_BYTES) {
+      throw new Error(`Upload exceeds limit: ${MAX_UPLOAD_BYTES}`);
     }
 
     const mediaId = randomUUID();

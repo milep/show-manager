@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "node:path";
+import { MAX_UPLOAD_BYTES } from "../config.js";
 import type { AppServices } from "../app.js";
 
 export function createLibraryRouter(services: AppServices) {
@@ -8,7 +9,7 @@ export function createLibraryRouter(services: AppServices) {
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-      fileSize: services.config.maxUploadBytes,
+      fileSize: MAX_UPLOAD_BYTES,
     },
   });
 

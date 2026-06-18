@@ -84,14 +84,16 @@ Important vars:
 - `SHOW_MANAGER_HOST`
 - `SHOW_MANAGER_PORT`
 - `SHOW_MANAGER_DATA_ROOT`
-- `SHOW_MANAGER_MAX_UPLOAD_BYTES`
 - `SHOW_MANAGER_RASP_SSH_TARGET`
-- `SHOW_MANAGER_RASP_ACTIVE_ROOT`
-- `SHOW_MANAGER_RASP_RELEASES_TO_KEEP`
 - `SHOW_MANAGER_PUBLIC_BASE_URL`
-- `SHOW_MANAGER_PUBLIC_ACCESS_HEADER`
-- `SHOW_MANAGER_PUBLIC_ACCESS_VALUE`
-- `SHOW_MANAGER_SESSION_COOKIE_NAME`
+
+Fixed local values stay in code:
+
+- Max upload size: `250000000` bytes
+- Remote root: `/home/pi/show-player`
+- Remote releases kept: `3`
+- Public access header: `x-show-manager-access: public`
+- Session cookie: `show_manager_session`
 
 ## Remote layout
 

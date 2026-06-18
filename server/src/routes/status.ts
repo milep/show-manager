@@ -1,14 +1,16 @@
 import { Router } from "express";
-import type { ApiStatus } from "../../../shared/show-schema.js";
-import { hashDraftShow } from "../services/show-state-store.js";
+import type { ApiStatus, DraftShow, LastApplied, RemoteStatus } from "../../../shared/show-schema.js";
 import type { AppServices } from "../app.js";
+import { hashDraftShow } from "../services/show-state-store.js";
 
-export function buildStatusResponse(args: {
-  draft: Awaited<ReturnType<AppServices["store"]["getDraftShow"]>>;
-  lastApplied: Awaited<ReturnType<AppServices["store"]["getLastApplied"]>>;
-  remoteStatus: Awaited<ReturnType<AppServices["raspController"]["status"]>>;
+type StatusResponseInput = {
+  draft: DraftShow;
+  lastApplied: LastApplied | null;
+  remoteStatus: RemoteStatus;
   applyInProgress: boolean;
-}): ApiStatus {
+};
+
+export function buildStatusResponse(args: StatusResponseInput): ApiStatus {
   const draftHash = hashDraftShow(args.draft);
   return {
     draftHash,

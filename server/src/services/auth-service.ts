@@ -112,7 +112,8 @@ export class AuthService {
   async enableQr() {
     return this.updateState((state) => {
       const token = randomQrToken();
-      const publicUrl = `${this.config.publicBaseUrl.toUpperCase()}/Q/${token}`;
+      const publicBaseUrl = this.config.publicBaseUrl.replace(/\/+$/, "").toUpperCase();
+      const publicUrl = `${publicBaseUrl}/Q/${token}`;
       state.activeQr = { tokenHash: sha256(token), publicUrl, createdAt: new Date().toISOString() };
       return { publicUrl };
     });

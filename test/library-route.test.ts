@@ -6,7 +6,7 @@ import { makeDraft, makeRemoteStatus } from "./test-helpers";
 describe("library route", () => {
   it("lists library items", async () => {
     const app = createApp({
-      config: { maxUploadBytes: 1000 } as never,
+      config: {} as never,
       paths: {} as never,
       store: {
         getDraftShow: async () => makeDraft(),

@@ -1,32 +1,7 @@
-import { spawn } from "node:child_process";
-
-export type CommandRunner = (command: string, args: string[]) => Promise<{ stdout: string; stderr: string }>;
-
-export function createSpawnRunner(): CommandRunner {
-  return (command, args) =>
-    new Promise((resolve, reject) => {
-      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (chunk) => {
-        stdout += String(chunk);
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += String(chunk);
-      });
-      child.on("error", reject);
-      child.on("close", (code) => {
-        if (code === 0) {
-          resolve({ stdout, stderr });
-          return;
-        }
-        reject(new Error(`${command} exited with ${code}. ${stderr.trim()}`));
-      });
-    });
-}
+import { runCommand, type CommandRunner } from "./run-command.js";
 
 export class ThumbnailService {
-  constructor(private readonly run: CommandRunner = createSpawnRunner()) {}
+  constructor(private readonly run: CommandRunner = runCommand) {}
 
   async createThumbnail(sourcePath: string, targetPath: string): Promise<void> {
     await this.run("ffmpeg", ["-y", "-i", sourcePath, "-frames:v", "1", "-vf", "scale=640:-1", targetPath]);

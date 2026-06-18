@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./web" },
+    { "path": "./server" }
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["web/src/*"]
+    }
+  }
+}

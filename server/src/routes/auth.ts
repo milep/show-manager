@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { AppServices } from "../app.js";
+import { PUBLIC_ACCESS_HEADER, PUBLIC_ACCESS_VALUE, SESSION_COOKIE_NAME } from "../config.js";
 import { parseCookie } from "../services/auth-service.js";
 
 function wantsJson(path: string) {
@@ -33,7 +34,7 @@ export function createLoginRouter(services: AppServices) {
         response.status(401).type("html").send(loginResultHtml("QR code is no longer valid."));
         return;
       }
-      response.cookie(services.config.sessionCookieName, session.token, {
+      response.cookie(SESSION_COOKIE_NAME, session.token, {
         httpOnly: true,
         secure: true,
         sameSite: "lax",
@@ -99,16 +100,12 @@ export function requirePublicAuth(services: AppServices) {
         next();
         return;
       }
-      if (!services.config.publicAccessHeader || !services.config.publicAccessValue) {
+      const access = request.header(PUBLIC_ACCESS_HEADER);
+      if (access !== PUBLIC_ACCESS_VALUE) {
         next();
         return;
       }
-      const access = request.header(services.config.publicAccessHeader);
-      if (access !== services.config.publicAccessValue) {
-        next();
-        return;
-      }
-      const sessionToken = parseCookie(request.headers.cookie, services.config.sessionCookieName);
+      const sessionToken = parseCookie(request.headers.cookie, SESSION_COOKIE_NAME);
       if (await services.authService.isValidSession(sessionToken)) {
         next();
         return;

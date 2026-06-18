@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { DraftShow, LibraryState, MediaAsset } from "../../../shared/show-schema.js";
+import { RASP_ACTIVE_ROOT } from "../config.js";
 import type { DataRootPaths } from "./data-root.js";
 import { hashDraftShow } from "./show-state-store.js";
 
@@ -58,7 +59,7 @@ export class PlaylistBundleService {
     const launchScript = `#!/usr/bin/env bash
 set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
-PLAYER_ROOT=${shellEscape("/home/pi/show-player")}
+PLAYER_ROOT=${shellEscape(RASP_ACTIVE_ROOT)}
 PID_FILE="$PLAYER_ROOT/player.pid"
 LOG_FILE="$PLAYER_ROOT/player.log"
 PLAYLIST_FILE="$ROOT_DIR/playlist.txt"
@@ -73,7 +74,7 @@ echo $! > "$PID_FILE"
     const script = `#!/usr/bin/env bash
 set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
-PLAYER_ROOT=${shellEscape("/home/pi/show-player")}
+PLAYER_ROOT=${shellEscape(RASP_ACTIVE_ROOT)}
 PID_FILE="$PLAYER_ROOT/player.pid"
 LOG_FILE="$PLAYER_ROOT/player.log"
 ACTIVE_RELEASE=${shellEscape(applyId)}

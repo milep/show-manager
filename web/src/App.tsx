@@ -5,6 +5,8 @@ import { PlaylistEditor } from "@/components/playlist-editor";
 import { ShowSettingsForm } from "@/components/show-settings-form";
 import { StatusCard } from "@/components/status-card";
 import { UploadPanel } from "@/components/upload-panel";
+import { Card, CardContent } from "@/components/ui/card";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { applyShow, fetchLibrary, fetchQrDisplay, fetchShow, fetchStatus, saveShow, setQrDisplay, uploadFile } from "@/lib/api";
 import { createPlaylistItemId } from "@/lib/playlist-item-id";
 
@@ -122,72 +124,56 @@ export default function App() {
     }
   }
 
-  const playlistCount = draft.playlist.length;
-  const libraryCount = library.items.length;
+  function updateMobileSection(value: string) {
+    if (value) {
+      setMobileSection(value as MobileSection);
+    }
+  }
+
+  const stats = [
+    { label: "Playlist items", value: draft.playlist.length },
+    { label: "Library items", value: library.items.length },
+    { label: "Image duration", value: `${draft.settings.imageDurationSeconds}s` },
+    { label: "Video loops", value: `${draft.settings.videoLoopCount}×` },
+  ];
 
   return (
     <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 px-3 py-4 sm:gap-6 sm:px-4 sm:py-8">
       <StatusCard status={status} saveState={saveState} saveError={saveError} qrDisplay={qrDisplay} qrBusy={qrBusy} qrError={qrError} onApply={handleApply} onToggleQrDisplay={handleToggleQrDisplay} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-lg border bg-card p-3">
-          <div className="text-xs text-muted-foreground">Playlist items</div>
-          <div className="text-2xl font-semibold">{playlistCount}</div>
-        </div>
-        <div className="rounded-lg border bg-card p-3">
-          <div className="text-xs text-muted-foreground">Library items</div>
-          <div className="text-2xl font-semibold">{libraryCount}</div>
-        </div>
-        <div className="rounded-lg border bg-card p-3">
-          <div className="text-xs text-muted-foreground">Image duration</div>
-          <div className="text-2xl font-semibold">{draft.settings.imageDurationSeconds}s</div>
-        </div>
-        <div className="rounded-lg border bg-card p-3">
-          <div className="text-xs text-muted-foreground">Video loops</div>
-          <div className="text-2xl font-semibold">{draft.settings.videoLoopCount}×</div>
-        </div>
+        {stats.map((stat) => (
+          <Card key={stat.label}>
+            <CardContent className="flex flex-col gap-1 p-3">
+              <div className="text-xs text-muted-foreground">{stat.label}</div>
+              <div className="text-2xl font-semibold">{stat.value}</div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <div className="sticky top-0 z-10 -mx-3 border-y bg-background/95 px-3 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 lg:hidden">
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            className={`rounded-md border px-3 py-2 text-sm font-medium ${mobileSection === "controls" ? "bg-primary text-primary-foreground" : "bg-card"}`}
-            onClick={() => setMobileSection("controls")}
-            type="button"
-          >
-            Controls
-          </button>
-          <button
-            className={`rounded-md border px-3 py-2 text-sm font-medium ${mobileSection === "playlist" ? "bg-primary text-primary-foreground" : "bg-card"}`}
-            onClick={() => setMobileSection("playlist")}
-            type="button"
-          >
-            Playlist
-          </button>
-          <button
-            className={`rounded-md border px-3 py-2 text-sm font-medium ${mobileSection === "library" ? "bg-primary text-primary-foreground" : "bg-card"}`}
-            onClick={() => setMobileSection("library")}
-            type="button"
-          >
-            Library
-          </button>
-        </div>
+        <ToggleGroup className="grid w-full grid-cols-3" type="single" value={mobileSection} onValueChange={updateMobileSection} variant="outline">
+          <ToggleGroupItem value="controls">Controls</ToggleGroupItem>
+          <ToggleGroupItem value="playlist">Playlist</ToggleGroupItem>
+          <ToggleGroupItem value="library">Library</ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       <div className="hidden gap-6 xl:grid xl:grid-cols-[20rem_1fr]">
-        <div className="space-y-6">
+        <div className="flex flex-col gap-6">
           <UploadPanel onUpload={handleUpload} />
           <ShowSettingsForm settings={draft.settings} onChange={(settings) => queueSave({ ...draft, settings })} />
         </div>
-        <div className="space-y-6">
+        <div className="flex flex-col gap-6">
           <PlaylistEditor draft={draft} library={library} onMove={handleMove} onRemove={handleRemove} />
           <MediaLibrary library={library} onAdd={handleAdd} />
         </div>
       </div>
 
-      <div className="space-y-4 xl:hidden">
+      <div className="flex flex-col gap-4 xl:hidden">
         {mobileSection === "controls" ? (
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             <UploadPanel onUpload={handleUpload} />
             <ShowSettingsForm settings={draft.settings} onChange={(settings) => queueSave({ ...draft, settings })} />
           </div>

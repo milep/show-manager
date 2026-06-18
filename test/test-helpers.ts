@@ -17,15 +17,8 @@ export function makeConfig(root: string): ShowManagerConfig {
     host: "127.0.0.1",
     port: 4791,
     dataRoot: root,
-    maxUploadBytes: 5_000_000,
     raspSshTarget: "rasp",
-    raspActiveRoot: "/home/pi/show-player",
-    raspReleasesToKeep: 3,
     publicBaseUrl: "https://show.miikaleppanen.com",
-    publicAccessHeader: "x-show-manager-access",
-    publicAccessValue: "public",
-    sessionCookieName: "show_manager_session",
-    nodeEnv: "test",
   };
 }
 
