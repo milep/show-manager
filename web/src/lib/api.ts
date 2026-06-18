@@ -1,4 +1,4 @@
-import type { AccessMode, ApiStatus, DraftShow, LibraryState, QrDisplayStatus } from "../../../shared/show-schema";
+import type { AccessMode, ApiStatus, DraftShow, LibraryState, QrDisplayStatus, YoutubeQueueSnapshot, YoutubeSearchResponse, YoutubeSearchResult, YoutubeSearchSuggestionsResponse } from "../../../shared/show-schema";
 
 export type ShowManagerSnapshot = {
   library: LibraryState;
@@ -87,4 +87,44 @@ export function applyShow() {
   return expectJson<ApiStatus>("/api/show/apply", {
     method: "POST",
   });
+}
+
+export function fetchYoutubeQueue() {
+  return expectJson<YoutubeQueueSnapshot>("/api/youtube-queue");
+}
+
+export function searchYoutube(query: string) {
+  return expectJson<YoutubeSearchResponse>(`/api/youtube/search?q=${encodeURIComponent(query)}`);
+}
+
+export function fetchYoutubeSearchSuggestions(query: string) {
+  return expectJson<YoutubeSearchSuggestionsResponse>(`/api/youtube/search-suggestions?q=${encodeURIComponent(query)}`);
+}
+
+export function addYoutubeQueueItem(item: YoutubeSearchResult) {
+  return expectJson<YoutubeQueueSnapshot>("/api/youtube-queue/items", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(item),
+  });
+}
+
+export function addYoutubeQueueItemNext(item: YoutubeSearchResult) {
+  return expectJson<YoutubeQueueSnapshot>("/api/youtube-queue/items/next", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(item),
+  });
+}
+
+export function skipYoutubeQueue() {
+  return expectJson<YoutubeQueueSnapshot>("/api/youtube-queue/skip", { method: "POST" });
+}
+
+export function pauseYoutubePlayback() {
+  return expectJson<YoutubeQueueSnapshot>("/api/youtube-playback/pause", { method: "POST" });
+}
+
+export function playYoutubePlayback() {
+  return expectJson<YoutubeQueueSnapshot>("/api/youtube-playback/play", { method: "POST" });
 }

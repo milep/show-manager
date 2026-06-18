@@ -29,6 +29,7 @@ async function makeApp(searchResponse = {
   const store = new ShowStateStore(paths);
   const youtubeStore = new YoutubeStore(paths);
   let ticks = 0;
+  const playbackActions: string[] = [];
   const app = createApp({
     config: makeConfig(paths.root),
     paths,
@@ -36,7 +37,15 @@ async function makeApp(searchResponse = {
     mediaStore: {} as never,
     bundleService: {} as never,
     raspController: { status: async () => makeRemoteStatus() } as never,
-    adbYoutubeController: { getPlaybackStatus: async () => playback() } as never,
+    adbYoutubeController: {
+      getPlaybackStatus: async () => playback(),
+      pause: async () => {
+        playbackActions.push("pause");
+      },
+      play: async () => {
+        playbackActions.push("play");
+      },
+    } as never,
     youtubeQueueScheduler: {
       status: () => ({ enabled: false, lastTickAt: null, lastError: null }),
       getCachedPlaybackStatus: () => null,
@@ -59,7 +68,7 @@ async function makeApp(searchResponse = {
     } as never,
     runtime: { applyInProgress: false },
   });
-  return { app, store, youtubeStore, getTicks: () => ticks };
+  return { app, store, youtubeStore, getTicks: () => ticks, playbackActions };
 }
 
 describe("youtube queue route", () => {
@@ -166,6 +175,17 @@ describe("youtube queue route", () => {
     const response = await request(app).post("/api/youtube/playlists").send({ name: "" });
 
     expect(response.status).toBe(400);
+  });
+
+  it("controls playback", async () => {
+    const { app, playbackActions } = await makeApp();
+
+    const playResponse = await request(app).post("/api/youtube-playback/play").send({});
+    const pauseResponse = await request(app).post("/api/youtube-playback/pause").send({});
+
+    expect(playResponse.status).toBe(200);
+    expect(pauseResponse.status).toBe(200);
+    expect(playbackActions).toEqual(["play", "pause"]);
   });
 
   it("skips current item", async () => {

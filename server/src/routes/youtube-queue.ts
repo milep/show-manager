@@ -129,6 +129,24 @@ export function createYoutubeQueueRouter(services: AppServices) {
     }
   });
 
+  router.post("/api/youtube-playback/pause", async (_request, response, next) => {
+    try {
+      await services.adbYoutubeController.pause();
+      response.json(await buildSnapshot(services));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/api/youtube-playback/play", async (_request, response, next) => {
+    try {
+      await services.adbYoutubeController.play();
+      response.json(await buildSnapshot(services));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/api/youtube-queue/skip", async (_request, response, next) => {
     try {
       services.youtubeStore.markCurrentCompleted();

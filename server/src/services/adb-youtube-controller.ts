@@ -129,4 +129,14 @@ export class AdbYoutubeController {
       `https://www.youtube.com/watch?v=${videoId}`,
     ]);
   }
+
+  async pause(): Promise<void> {
+    await this.connect();
+    await this.runRemoteAdb(["shell", "input", "keyevent", "KEYCODE_MEDIA_PAUSE"]);
+  }
+
+  async play(): Promise<void> {
+    await this.connect();
+    await this.runRemoteAdb(["shell", "input", "keyevent", "KEYCODE_MEDIA_PLAY"]);
+  }
 }
