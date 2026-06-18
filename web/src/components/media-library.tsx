@@ -26,7 +26,7 @@ export function MediaLibrary({ library, onAdd }: MediaLibraryProps) {
             </EmptyHeader>
           </Empty>
         ) : (
-          <ScrollArea className="h-[65vh] pr-2 sm:h-[30rem] sm:pr-4">
+          <ScrollArea className="sm:h-[30rem] sm:pr-4">
             <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
               {library.items.map((item) => (
                 <Card key={item.id} className="gap-3 overflow-hidden py-0">
