@@ -4,6 +4,7 @@ import type { ShowManagerConfig } from "./config.js";
 import type { DataRootPaths } from "./services/data-root.js";
 import { MediaStore } from "./services/media-store.js";
 import { PlaylistBundleService } from "./services/playlist-bundle.js";
+import { AdbYoutubeController } from "./services/adb-youtube-controller.js";
 import { RaspController } from "./services/rasp-controller.js";
 import { ShowStateStore } from "./services/show-state-store.js";
 import { AuthService } from "./services/auth-service.js";
@@ -13,6 +14,8 @@ import { createAuthApiRouter, createLoginRouter, requirePublicAuth } from "./rou
 import { createLibraryRouter } from "./routes/library.js";
 import { createShowRouter } from "./routes/show.js";
 import { createStatusRouter } from "./routes/status.js";
+import { createYoutubeQueueRouter } from "./routes/youtube-queue.js";
+import { YoutubeQueueScheduler } from "./services/youtube-queue-scheduler.js";
 
 export type AppServices = {
   config: ShowManagerConfig;
@@ -21,6 +24,8 @@ export type AppServices = {
   mediaStore: MediaStore;
   bundleService: PlaylistBundleService;
   raspController: RaspController;
+  adbYoutubeController: AdbYoutubeController;
+  youtubeQueueScheduler: YoutubeQueueScheduler;
   authService: AuthService;
   runtime: { applyInProgress: boolean };
 };
@@ -36,6 +41,7 @@ export function createApp(services: AppServices): Express {
   app.use(createStatusRouter(services));
   app.use(createLibraryRouter(services));
   app.use(createShowRouter(services));
+  app.use(createYoutubeQueueRouter(services));
   app.use(createApplyRouter(services));
 
   app.use(express.static(webDistDir));
@@ -53,6 +59,7 @@ export function createApp(services: AppServices): Express {
 
 export function createAppServices(config: ShowManagerConfig, paths: DataRootPaths): AppServices {
   const store = new ShowStateStore(paths);
+  const adbYoutubeController = new AdbYoutubeController(config);
   return {
     config,
     paths,
@@ -60,6 +67,8 @@ export function createAppServices(config: ShowManagerConfig, paths: DataRootPath
     mediaStore: new MediaStore(paths, store, new ThumbnailService()),
     bundleService: new PlaylistBundleService(paths),
     raspController: new RaspController(config, paths, store),
+    adbYoutubeController,
+    youtubeQueueScheduler: new YoutubeQueueScheduler(store, adbYoutubeController),
     authService: new AuthService(config, paths),
     runtime: { applyInProgress: false },
   };

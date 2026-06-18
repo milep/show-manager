@@ -12,6 +12,7 @@ export type DataRootPaths = {
   lastAppliedFile: string;
   applyHistoryFile: string;
   authStateFile: string;
+  youtubeQueueFile: string;
   qrImageFile: string;
 };
 
@@ -30,6 +31,7 @@ export function getDataRootPaths(root: string): DataRootPaths {
     lastAppliedFile: path.join(runtimeDir, "last-applied.json"),
     applyHistoryFile: path.join(runtimeDir, "apply-history.jsonl"),
     authStateFile: path.join(stateDir, "auth.json"),
+    youtubeQueueFile: path.join(stateDir, "youtube-queue.json"),
     qrImageFile: path.join(runtimeDir, "qr-login.gif"),
   };
 }

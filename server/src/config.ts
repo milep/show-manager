@@ -6,6 +6,8 @@ export const RASP_RELEASES_TO_KEEP = 3;
 export const PUBLIC_ACCESS_HEADER = "x-show-manager-access";
 export const PUBLIC_ACCESS_VALUE = "public";
 export const SESSION_COOKIE_NAME = "show_manager_session";
+export const ADB_TV_TARGET = "192.168.68.104:5555";
+export const YOUTUBE_TV_PACKAGE = "com.google.android.youtube.tv";
 
 const DEFAULT_PUBLIC_BASE_URL = "https://show.miikaleppanen.com";
 

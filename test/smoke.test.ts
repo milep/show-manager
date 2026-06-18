@@ -16,6 +16,8 @@ describe("smoke", () => {
       mediaStore: {} as never,
       bundleService: {} as never,
       raspController: { status: async () => makeRemoteStatus() } as never,
+      adbYoutubeController: { getPlaybackStatus: async () => ({ connected: true, state: "idle", packageName: null, videoId: null, title: null, subtitle: null, positionMs: null, durationMs: null, checkedAt: new Date().toISOString(), detail: null }) } as never,
+      youtubeQueueScheduler: { status: () => ({ enabled: false, lastTickAt: null, lastError: null }), getCachedPlaybackStatus: () => null, tick: async () => undefined } as never,
       runtime: { applyInProgress: false },
     });
 

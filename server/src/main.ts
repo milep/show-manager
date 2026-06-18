@@ -7,10 +7,20 @@ async function main() {
   const paths = await ensureDataRoot(config.dataRoot);
   const services = createAppServices(config, paths);
   const app = createApp(services);
+  services.youtubeQueueScheduler.start();
 
-  app.listen(config.port, config.host, () => {
+  const server = app.listen(config.port, config.host, () => {
     console.log(`show-manager listening on http://${config.host}:${config.port}`);
   });
+
+  const stop = () => {
+    services.youtubeQueueScheduler.stop();
+    server.close(() => {
+      process.exitCode = 0;
+    });
+  };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
 }
 
 main().catch((error) => {

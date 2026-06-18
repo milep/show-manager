@@ -50,6 +50,44 @@ Apply restarts `mpv` through `run-show.sh`.
 
 Library deletion stays out of scope for v1.
 
+## YouTube TV queue backend
+
+The backend can control native YouTube on the TV through ADB on `rasp`.
+
+Prerequisite:
+
+```bash
+ssh rasp 'adb devices -l'
+```
+
+The TV should appear as `192.168.68.104:5555 device`.
+
+Inspect queue and playback:
+
+```bash
+curl -s http://127.0.0.1:4791/api/youtube-queue
+```
+
+Append a video:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/items \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://youtu.be/GF3wagWwHjM"}'
+```
+
+Skip current item:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/skip
+```
+
+Trigger playback check:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/play
+```
+
 ## Development
 
 ```bash
