@@ -4,10 +4,6 @@ import type { YoutubeQueueSnapshot } from "../../../shared/show-schema.js";
 import type { AppServices } from "../app.js";
 import { parseYoutubeLink, YoutubeLinkError } from "../services/youtube-link.js";
 
-const addYoutubeItemSchema = z.object({
-  url: z.string().min(1),
-});
-
 const playlistSchema = z.object({
   name: z.string().min(1),
 });
@@ -16,6 +12,19 @@ const loadPlaylistSchema = z.object({
   playlistId: z.string().min(1),
   mode: z.enum(["append", "replace"]).default("append"),
 });
+
+const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
+
+const addSearchResultSchema = z.object({
+  url: z.string().min(1).optional(),
+  videoId: youtubeVideoIdSchema.optional(),
+  kind: z.enum(["song", "video"]).optional(),
+  title: z.string().min(1).optional(),
+  artists: z.array(z.string().min(1)).optional(),
+  album: z.string().min(1).nullable().optional(),
+  durationMs: z.number().int().nonnegative().nullable().optional(),
+  thumbnails: z.array(z.string().url()).optional(),
+}).refine((value) => value.url || value.videoId, "Expected url or videoId.");
 
 function isTrusted(request: import("express").Request) {
   return request.header("x-show-manager-access") !== "public";
@@ -48,6 +57,28 @@ function mediaInputFromUrl(url: string) {
   };
 }
 
+function mediaInputFromBody(body: z.infer<typeof addSearchResultSchema>) {
+  if (body.url) {
+    return mediaInputFromUrl(body.url);
+  }
+  const videoId = body.videoId;
+  if (!videoId) {
+    throw new YoutubeLinkError("Expected url or videoId.");
+  }
+  const firstArtist = body.artists?.[0] ?? null;
+  return {
+    sourceId: videoId,
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+    title: body.title ?? null,
+    artist: body.kind === "song" ? firstArtist : null,
+    album: body.kind === "song" ? body.album ?? null : null,
+    channel: body.kind === "video" ? firstArtist : null,
+    durationMs: body.durationMs ?? null,
+    thumbnailUrl: body.thumbnails?.[0] ?? null,
+    kind: body.kind === "song" ? "music" as const : body.kind === "video" ? "video" as const : "unknown" as const,
+  };
+}
+
 function handleQueueInputError(error: unknown, response: import("express").Response, next: import("express").NextFunction) {
   if (error instanceof z.ZodError || error instanceof YoutubeLinkError) {
     response.status(400).json({ error: error instanceof Error ? error.message : "Invalid YouTube queue item." });
@@ -69,8 +100,8 @@ export function createYoutubeQueueRouter(services: AppServices) {
 
   router.post("/api/youtube-queue/items", async (request, response, next) => {
     try {
-      const body = addYoutubeItemSchema.parse(request.body);
-      services.youtubeStore.addToQueue(mediaInputFromUrl(body.url), "end");
+      const body = addSearchResultSchema.parse(request.body);
+      services.youtubeStore.addToQueue(mediaInputFromBody(body), "end");
       await services.youtubeQueueScheduler.tick();
       response.status(201).json(await buildSnapshot(services));
     } catch (error) {
@@ -80,8 +111,8 @@ export function createYoutubeQueueRouter(services: AppServices) {
 
   router.post("/api/youtube-queue/items/next", async (request, response, next) => {
     try {
-      const body = addYoutubeItemSchema.parse(request.body);
-      services.youtubeStore.addToQueue(mediaInputFromUrl(body.url), "next");
+      const body = addSearchResultSchema.parse(request.body);
+      services.youtubeStore.addToQueue(mediaInputFromBody(body), "next");
       await services.youtubeQueueScheduler.tick();
       response.status(201).json(await buildSnapshot(services));
     } catch (error) {
@@ -122,6 +153,37 @@ export function createYoutubeQueueRouter(services: AppServices) {
       await services.youtubeQueueScheduler.tick();
       response.json(await buildSnapshot(services));
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/api/youtube/search-suggestions", async (request, response, next) => {
+    try {
+      const query = z.string().trim().min(1).parse(request.query.q);
+      response.json(await services.youtubeSearchService.suggestions(query));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        response.status(400).json({ error: "Search query is required." });
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.get("/api/youtube/search", async (request, response, next) => {
+    try {
+      const query = z.string().trim().min(1).parse(request.query.q);
+      const searchResponse = await services.youtubeSearchService.search(query);
+      if (!searchResponse.results.length && searchResponse.warnings.length) {
+        response.status(502).json(searchResponse);
+        return;
+      }
+      response.json(searchResponse);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        response.status(400).json({ error: "Search query is required." });
+        return;
+      }
       next(error);
     }
   });

@@ -66,18 +66,35 @@ ssh rasp 'adb devices -l'
 
 The TV should appear as `192.168.68.104:5555 device`.
 
+Search YouTube Music:
+
+```bash
+curl -s 'http://127.0.0.1:4791/api/youtube/search?q=massive%20attack%20teardrop'
+```
+
+Search returns `song` and `video` results.
+QR sessions may use search.
+
 Inspect party queue and playback:
 
 ```bash
 curl -s http://127.0.0.1:4791/api/youtube-queue
 ```
 
-Append a video to the party queue:
+Append a video URL to the party queue:
 
 ```bash
 curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/items \
   -H 'content-type: application/json' \
   -d '{"url":"https://youtu.be/GF3wagWwHjM"}'
+```
+
+Append a search result to the party queue:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/items \
+  -H 'content-type: application/json' \
+  -d '{"videoId":"Tb0MC0jFv6M","kind":"song","title":"Teardrop","artists":["Massive Attack"],"album":"Mezzanine"}'
 ```
 
 Add a video next:

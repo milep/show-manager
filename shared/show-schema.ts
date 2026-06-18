@@ -87,6 +87,26 @@ export const youtubePlaylistSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const youtubeSearchResultSchema = z.object({
+  kind: z.enum(["song", "video"]),
+  videoId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
+  title: z.string().min(1),
+  artists: z.array(z.string().min(1)),
+  album: z.string().min(1).nullable(),
+  duration: z.string().nullable(),
+  durationMs: z.number().int().nonnegative().nullable(),
+  thumbnails: z.array(z.string().url()),
+});
+
+export const youtubeSearchResponseSchema = z.object({
+  results: z.array(youtubeSearchResultSchema),
+  warnings: z.array(z.string()),
+});
+
+export const youtubeSearchSuggestionsResponseSchema = z.object({
+  suggestions: z.array(z.string().min(1)),
+});
+
 export const youtubeQueueItemSchema = z.object({
   id: z.string().min(1),
   mediaItemId: z.string().min(1),
@@ -155,6 +175,9 @@ export type AccessMode = z.infer<typeof accessModeSchema>;
 export type YoutubeMediaKind = z.infer<typeof youtubeMediaKindSchema>;
 export type YoutubeMediaItem = z.infer<typeof youtubeMediaItemSchema>;
 export type YoutubePlaylist = z.infer<typeof youtubePlaylistSchema>;
+export type YoutubeSearchResult = z.infer<typeof youtubeSearchResultSchema>;
+export type YoutubeSearchResponse = z.infer<typeof youtubeSearchResponseSchema>;
+export type YoutubeSearchSuggestionsResponse = z.infer<typeof youtubeSearchSuggestionsResponseSchema>;
 export type YoutubeQueueItem = z.infer<typeof youtubeQueueItemSchema>;
 export type YoutubeQueueState = z.infer<typeof youtubeQueueStateSchema>;
 export type YoutubePlaybackStatus = z.infer<typeof youtubePlaybackStatusSchema>;

@@ -19,6 +19,7 @@ describe("smoke", () => {
       adbYoutubeController: { getPlaybackStatus: async () => ({ connected: true, state: "idle", packageName: null, videoId: null, title: null, subtitle: null, album: null, positionMs: null, durationMs: null, checkedAt: new Date().toISOString(), detail: null }) } as never,
       youtubeQueueScheduler: { status: () => ({ enabled: false, lastTickAt: null, lastError: null }), getCachedPlaybackStatus: () => null, tick: async () => undefined } as never,
       youtubeStore: {} as never,
+      youtubeSearchService: {} as never,
       runtime: { applyInProgress: false },
     });
 

@@ -21,7 +21,10 @@ function playback() {
   };
 }
 
-async function makeApp() {
+async function makeApp(searchResponse = {
+  results: [{ kind: "song", videoId: "GF3wagWwHjM", title: "teardrop", artists: ["Artist"], album: "Album", duration: "3:00", durationMs: 180000, thumbnails: [] }],
+  warnings: [],
+}) {
   const paths = await makeTempPaths();
   const store = new ShowStateStore(paths);
   const youtubeStore = new YoutubeStore(paths);
@@ -42,6 +45,13 @@ async function makeApp() {
       },
     } as never,
     youtubeStore,
+    youtubeSearchService: {
+      suggestions: async (query: string) => ({ suggestions: [`${query} suggestion`] }),
+      search: async (query: string) => ({
+        ...searchResponse,
+        results: searchResponse.results.map((result) => ({ ...result, title: query })),
+      }),
+    } as never,
     authService: {
       createSessionFromQrToken: async () => null,
       getQrStatus: async () => ({ active: false, publicUrl: null }),
@@ -83,6 +93,60 @@ describe("youtube queue route", () => {
     expect(response.status).toBe(200);
     expect(response.body.queue.items).toEqual([]);
     expect(response.body.playback.state).toBe("idle");
+  });
+
+  it("returns search suggestions for QR users", async () => {
+    const { app } = await makeApp();
+
+    const response = await request(app).get("/api/youtube/search-suggestions?q=tear").set("x-show-manager-access", "public");
+
+    expect(response.status).toBe(200);
+    expect(response.body.suggestions).toEqual(["tear suggestion"]);
+  });
+
+  it("rejects blank suggestion queries", async () => {
+    const { app } = await makeApp();
+
+    const response = await request(app).get("/api/youtube/search-suggestions?q=%20%20").set("x-show-manager-access", "public");
+
+    expect(response.status).toBe(400);
+  });
+
+  it("searches for QR users", async () => {
+    const { app } = await makeApp();
+
+    const response = await request(app).get("/api/youtube/search?q=teardrop").set("x-show-manager-access", "public");
+
+    expect(response.status).toBe(200);
+    expect(response.body.results[0]).toMatchObject({ kind: "song", title: "teardrop" });
+  });
+
+  it("rejects blank search queries", async () => {
+    const { app } = await makeApp();
+
+    const response = await request(app).get("/api/youtube/search?q=%20%20").set("x-show-manager-access", "public");
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 502 when search dependencies fail", async () => {
+    const { app } = await makeApp({ results: [], warnings: ["song search failed", "video search failed"] });
+
+    const response = await request(app).get("/api/youtube/search?q=teardrop").set("x-show-manager-access", "public");
+
+    expect(response.status).toBe(502);
+    expect(response.body.warnings).toHaveLength(2);
+  });
+
+  it("adds search results by video id", async () => {
+    const { app } = await makeApp();
+
+    const response = await request(app)
+      .post("/api/youtube-queue/items")
+      .send({ videoId: "GF3wagWwHjM", kind: "song", title: "Teardrop", artists: ["Massive Attack"], album: "Mezzanine", durationMs: 330000 });
+
+    expect(response.status).toBe(201);
+    expect(response.body.queue.items[0]).toMatchObject({ videoId: "GF3wagWwHjM", title: "Teardrop", artist: "Massive Attack", album: "Mezzanine" });
   });
 
   it("keeps saved playlists trusted-only", async () => {

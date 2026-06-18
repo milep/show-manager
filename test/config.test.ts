@@ -10,6 +10,7 @@ describe("loadConfig", () => {
     expect(config.publicBaseUrl).toBe("https://show.miikaleppanen.com");
   });
 
+
   it("rejects invalid port", () => {
     expect(() => loadConfig({ SHOW_MANAGER_PORT: "99999" })).toThrow(/Invalid config/);
   });
