@@ -1,4 +1,11 @@
-import type { ApiStatus, DraftShow, LibraryState, QrDisplayStatus } from "../../../shared/show-schema";
+import type { AccessMode, ApiStatus, DraftShow, LibraryState, QrDisplayStatus } from "../../../shared/show-schema";
+
+export type ShowManagerSnapshot = {
+  library: LibraryState;
+  show: { draft: DraftShow; draftHash: string; isDirty: boolean };
+  status: ApiStatus;
+  qrDisplay: QrDisplayStatus;
+};
 
 async function expectJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, init);
@@ -15,11 +22,19 @@ async function expectJson<T>(input: RequestInfo, init?: RequestInit): Promise<T>
     throw new Error(message);
   }
 
-  return (await response.json()) as T;
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new Error("Expected JSON response from API.");
+  }
 }
 
 export function fetchStatus() {
   return expectJson<ApiStatus>("/api/status");
+}
+
+export function fetchAccessMode() {
+  return expectJson<AccessMode>("/api/auth/access");
 }
 
 export function fetchLibrary() {
@@ -32,6 +47,11 @@ export function fetchShow() {
 
 export function fetchQrDisplay() {
   return expectJson<QrDisplayStatus>("/api/auth/qr-display");
+}
+
+export async function fetchShowManagerSnapshot(): Promise<ShowManagerSnapshot> {
+  const [library, show, status, qrDisplay] = await Promise.all([fetchLibrary(), fetchShow(), fetchStatus(), fetchQrDisplay()]);
+  return { library, show, status, qrDisplay };
 }
 
 export function setQrDisplay(active: boolean) {

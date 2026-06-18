@@ -12,7 +12,7 @@ function loginRequiredHtml() {
 }
 
 function loginResultHtml(message: string) {
-  return `<!doctype html><html><head><title>Show Manager login</title><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body style="font-family: system-ui; margin: 2rem; max-width: 36rem;"><h1>${message}</h1><p><a href="/">Open Show Manager</a></p></body></html>`;
+  return `<!doctype html><html><head><title>Show Manager login</title><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body style="font-family: system-ui; margin: 2rem; max-width: 36rem;"><h1>${message}</h1><p><a href="/playlist-manager">Open Playlist Manager</a></p></body></html>`;
 }
 
 export function createLoginRouter(services: AppServices) {
@@ -41,7 +41,7 @@ export function createLoginRouter(services: AppServices) {
         expires: new Date(session.expiresAt),
         path: "/",
       });
-      response.redirect("/");
+      response.redirect("/playlist-manager");
     } catch (error) {
       next(error);
     }
@@ -52,6 +52,11 @@ export function createLoginRouter(services: AppServices) {
 
 export function createAuthApiRouter(services: AppServices) {
   const router = Router();
+
+  router.get("/api/auth/access", (request, response) => {
+    const access = request.header(PUBLIC_ACCESS_HEADER) === PUBLIC_ACCESS_VALUE ? "public" : "trusted";
+    response.json({ access });
+  });
 
   router.get("/api/auth/qr-display", async (_request, response, next) => {
     try {

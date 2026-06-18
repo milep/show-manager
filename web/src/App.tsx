@@ -1,186 +1,71 @@
-import { useEffect, useRef, useState } from "react";
-import { defaultDraftShow, type ApiStatus, type DraftShow, type LibraryState, type QrDisplayStatus } from "../../shared/show-schema";
-import { MediaLibrary } from "@/components/media-library";
-import { PlaylistEditor } from "@/components/playlist-editor";
-import { ShowSettingsForm } from "@/components/show-settings-form";
-import { StatusCard } from "@/components/status-card";
-import { UploadPanel } from "@/components/upload-panel";
+import { useEffect, useState } from "react";
+import type { AccessMode } from "../../shared/show-schema";
+import { PlaylistManagerMock } from "@/components/playlist-manager-mock";
+import { ShowManagerApp } from "@/components/show-manager-app";
 import { Card, CardContent } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { applyShow, fetchLibrary, fetchQrDisplay, fetchShow, fetchStatus, saveShow, setQrDisplay, uploadFile } from "@/lib/api";
-import { createPlaylistItemId } from "@/lib/playlist-item-id";
+import { fetchAccessMode, fetchShowManagerSnapshot, type ShowManagerSnapshot } from "@/lib/api";
 
-const emptyLibrary: LibraryState = { items: [] };
-
-type MobileSection = "controls" | "playlist" | "library";
+const playlistManagerPath = "/playlist-manager";
 
 export default function App() {
-  const [library, setLibrary] = useState<LibraryState>(emptyLibrary);
-  const [draft, setDraft] = useState<DraftShow>(defaultDraftShow);
-  const [status, setStatus] = useState<ApiStatus | null>(null);
-  const [qrDisplay, updateQrDisplay] = useState<QrDisplayStatus | null>(null);
-  const [qrBusy, setQrBusy] = useState(false);
-  const [qrError, setQrError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [mobileSection, setMobileSection] = useState<MobileSection>("playlist");
-  const saveTimerRef = useRef<number | null>(null);
+  const [routePath, setRoutePath] = useState(window.location.pathname);
+  const [accessMode, setAccessMode] = useState<AccessMode | null>(null);
+  const [showSnapshot, setShowSnapshot] = useState<ShowManagerSnapshot | null>(null);
+  const [startupError, setStartupError] = useState<string | null>(null);
 
   useEffect(() => {
-    void refreshAll();
-    return () => {
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
-      }
-    };
+    void initialize();
   }, []);
 
-  async function refreshAll() {
-    const [nextLibrary, nextShow, nextStatus, nextQrDisplay] = await Promise.all([fetchLibrary(), fetchShow(), fetchStatus(), fetchQrDisplay()]);
-    setLibrary(nextLibrary);
-    setDraft(nextShow.draft);
-    setStatus(nextStatus);
-    updateQrDisplay(nextQrDisplay);
-  }
-
-  function queueSave(nextDraft: DraftShow) {
-    setDraft(nextDraft);
-    setSaveState("saving");
-    setSaveError(null);
-    if (saveTimerRef.current) {
-      window.clearTimeout(saveTimerRef.current);
-    }
-    saveTimerRef.current = window.setTimeout(() => {
-      void persistDraft(nextDraft);
-    }, 250);
-  }
-
-  async function persistDraft(nextDraft: DraftShow) {
+  async function initialize() {
     try {
-      const saved = await saveShow(nextDraft);
-      const nextStatus = await fetchStatus();
-      setDraft(saved.draft);
-      setStatus(nextStatus);
-      setSaveState("idle");
+      const nextAccessMode = await fetchAccessMode();
+      const nextRoutePath = nextAccessMode.access === "public" ? playlistManagerPath : window.location.pathname;
+      if (nextRoutePath !== window.location.pathname) {
+        window.history.replaceState(null, "", nextRoutePath);
+      }
+      if (nextAccessMode.access === "trusted" && nextRoutePath !== playlistManagerPath) {
+        setShowSnapshot(await fetchShowManagerSnapshot());
+      }
+      setRoutePath(nextRoutePath);
+      setAccessMode(nextAccessMode);
+      setStartupError(null);
     } catch (error) {
-      setSaveState("error");
-      setSaveError(error instanceof Error ? error.message : "Save failed.");
+      setStartupError(error instanceof Error ? error.message : "Startup failed.");
     }
   }
 
-  async function handleUpload(file: File) {
-    await uploadFile(file);
-    await refreshAll();
+  const showPlaylistManager = routePath === playlistManagerPath;
+
+  if (!accessMode) {
+    return <StartupStatus message={startupError ? "Startup failed." : "Loading access mode…"} detail={startupError} />;
   }
 
-  function handleAdd(mediaId: string) {
-    queueSave({
-      ...draft,
-      playlist: [
-        ...draft.playlist,
-        { id: createPlaylistItemId(), sourceMediaId: mediaId },
-      ],
-    });
+  if (showPlaylistManager || accessMode.access === "public") {
+    return <PlaylistManagerMock showBackLink={accessMode.access === "trusted"} />;
   }
 
-  function handleMove(index: number, delta: number) {
-    const targetIndex = index + delta;
-    if (targetIndex < 0 || targetIndex >= draft.playlist.length) {
-      return;
-    }
-    const nextPlaylist = [...draft.playlist];
-    const [moved] = nextPlaylist.splice(index, 1);
-    if (!moved) {
-      return;
-    }
-    nextPlaylist.splice(targetIndex, 0, moved);
-    queueSave({ ...draft, playlist: nextPlaylist });
+  if (!showSnapshot) {
+    return <StartupStatus message="Loading show manager…" />;
   }
 
-  function handleRemove(index: number) {
-    queueSave({
-      ...draft,
-      playlist: draft.playlist.filter((_, candidateIndex) => candidateIndex !== index),
-    });
-  }
+  return <ShowManagerApp initialSnapshot={showSnapshot} />;
+}
 
-  async function handleApply() {
-    const nextStatus = await applyShow();
-    setStatus(nextStatus);
-  }
+type StartupStatusProps = {
+  message: string;
+  detail?: string | null;
+};
 
-  async function handleToggleQrDisplay() {
-    setQrBusy(true);
-    setQrError(null);
-    try {
-      const nextQrDisplay = await setQrDisplay(!(qrDisplay?.active ?? false));
-      updateQrDisplay(nextQrDisplay);
-      const nextStatus = await fetchStatus();
-      setStatus(nextStatus);
-    } catch (error) {
-      setQrError(error instanceof Error ? error.message : "QR update failed.");
-    } finally {
-      setQrBusy(false);
-    }
-  }
-
-  function updateMobileSection(value: string) {
-    if (value) {
-      setMobileSection(value as MobileSection);
-    }
-  }
-
-  const stats = [
-    { label: "Playlist items", value: draft.playlist.length },
-    { label: "Library items", value: library.items.length },
-    { label: "Image duration", value: `${draft.settings.imageDurationSeconds}s` },
-    { label: "Video loops", value: `${draft.settings.videoLoopCount}×` },
-  ];
-
+function StartupStatus({ message, detail }: StartupStatusProps) {
   return (
     <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 px-3 py-4 sm:gap-6 sm:px-4 sm:py-8">
-      <StatusCard status={status} saveState={saveState} saveError={saveError} qrDisplay={qrDisplay} qrBusy={qrBusy} qrError={qrError} onApply={handleApply} onToggleQrDisplay={handleToggleQrDisplay} />
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="flex flex-col gap-1 p-3">
-              <div className="text-xs text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-semibold">{stat.value}</div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="sticky top-0 z-10 -mx-3 border-y bg-background/95 px-3 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 lg:hidden">
-        <ToggleGroup className="grid w-full grid-cols-3" type="single" value={mobileSection} onValueChange={updateMobileSection} variant="outline">
-          <ToggleGroupItem value="controls">Controls</ToggleGroupItem>
-          <ToggleGroupItem value="playlist">Playlist</ToggleGroupItem>
-          <ToggleGroupItem value="library">Library</ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-
-      <div className="hidden gap-6 xl:grid xl:grid-cols-[20rem_1fr]">
-        <div className="flex flex-col gap-6">
-          <UploadPanel onUpload={handleUpload} />
-          <ShowSettingsForm settings={draft.settings} onChange={(settings) => queueSave({ ...draft, settings })} />
-        </div>
-        <div className="flex flex-col gap-6">
-          <PlaylistEditor draft={draft} library={library} onMove={handleMove} onRemove={handleRemove} />
-          <MediaLibrary library={library} onAdd={handleAdd} />
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4 xl:hidden">
-        {mobileSection === "controls" ? (
-          <div className="flex flex-col gap-4">
-            <UploadPanel onUpload={handleUpload} />
-            <ShowSettingsForm settings={draft.settings} onChange={(settings) => queueSave({ ...draft, settings })} />
-          </div>
-        ) : null}
-        {mobileSection === "playlist" ? <PlaylistEditor draft={draft} library={library} onMove={handleMove} onRemove={handleRemove} /> : null}
-        {mobileSection === "library" ? <MediaLibrary library={library} onAdd={handleAdd} /> : null}
-      </div>
+      <Card>
+        <CardContent className="flex flex-col gap-2 p-6 text-sm text-muted-foreground">
+          <div>{message}</div>
+          {detail ? <div>{detail}</div> : null}
+        </CardContent>
+      </Card>
     </main>
   );
 }

@@ -39,7 +39,25 @@ describe.sequential("auth routes", () => {
     const response = await request(app).get("/api/show").set("x-show-manager-access", "public").set("cookie", cookie);
 
     expect(login.status).toBe(302);
+    expect(login.headers.location).toBe("/playlist-manager");
     expect(response.status).toBe(200);
+  });
+
+  it("reports public and trusted access modes", async () => {
+    const paths = await makeTempPaths();
+    const services = createAppServices(makeConfig(paths.root), paths);
+    services.raspController.showQrCode = vi.fn(async () => undefined);
+    const app = createApp(services);
+
+    const trusted = await request(app).get("/api/auth/access");
+    const toggle = await request(app).put("/api/auth/qr-display").send({ active: true });
+    const loginPath = new URL(toggle.body.publicUrl).pathname;
+    const login = await request(app).get(loginPath).set("x-show-manager-access", "public");
+    const cookie = login.headers["set-cookie"];
+    const publicAccess = await request(app).get("/api/auth/access").set("x-show-manager-access", "public").set("cookie", cookie);
+
+    expect(trusted.body).toEqual({ access: "trusted" });
+    expect(publicAccess.body).toEqual({ access: "public" });
   });
 
   it("revokes qr token when display is hidden", async () => {

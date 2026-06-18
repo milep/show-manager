@@ -58,6 +58,10 @@ export const qrDisplayStatusSchema = z.object({
   publicUrl: z.string().url().nullable(),
 });
 
+export const accessModeSchema = z.object({
+  access: z.enum(["public", "trusted"]),
+});
+
 export const apiStatusSchema = z.object({
   draftHash: z.string().min(1),
   isDirty: z.boolean(),
@@ -75,6 +79,7 @@ export type DraftShow = z.infer<typeof draftShowSchema>;
 export type RemoteStatus = z.infer<typeof remoteStatusSchema>;
 export type LastApplied = z.infer<typeof lastAppliedSchema>;
 export type QrDisplayStatus = z.infer<typeof qrDisplayStatusSchema>;
+export type AccessMode = z.infer<typeof accessModeSchema>;
 export type ApiStatus = z.infer<typeof apiStatusSchema>;
 
 export const defaultDraftShow: DraftShow = {
