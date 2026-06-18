@@ -17,7 +17,7 @@ import { createStatusRouter } from "./routes/status.js";
 import { createYoutubeQueueRouter } from "./routes/youtube-queue.js";
 import { YoutubeQueueScheduler } from "./services/youtube-queue-scheduler.js";
 import { YoutubeStore } from "./services/youtube-store.js";
-import { YoutubeSearchService } from "./services/youtube-search-service.js";
+import { GoogleYoutubeDataApiClient, YoutubeSearchService } from "./services/youtube-search-service.js";
 
 export type AppServices = {
   config: ShowManagerConfig;
@@ -65,6 +65,7 @@ export function createAppServices(config: ShowManagerConfig, paths: DataRootPath
   const store = new ShowStateStore(paths);
   const adbYoutubeController = new AdbYoutubeController(config);
   const youtubeStore = new YoutubeStore(paths);
+  const youtubeDataApiClient = config.youtubeDataApiKey ? new GoogleYoutubeDataApiClient(config.youtubeDataApiKey) : null;
   return {
     config,
     paths,
@@ -75,7 +76,7 @@ export function createAppServices(config: ShowManagerConfig, paths: DataRootPath
     adbYoutubeController,
     youtubeQueueScheduler: new YoutubeQueueScheduler(youtubeStore, adbYoutubeController),
     youtubeStore,
-    youtubeSearchService: new YoutubeSearchService(),
+    youtubeSearchService: new YoutubeSearchService(undefined, youtubeDataApiClient),
     authService: new AuthService(config, paths),
     runtime: { applyInProgress: false },
   };

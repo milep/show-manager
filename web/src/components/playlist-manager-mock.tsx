@@ -42,11 +42,11 @@ function relevanceScore(item: YoutubeSearchResult, query: string) {
 
 function compareSearchResults(query: string) {
   return (left: YoutubeSearchResult, right: YoutubeSearchResult) => {
-    const relevanceCompare = relevanceScore(left, query) - relevanceScore(right, query);
-    if (relevanceCompare !== 0) return relevanceCompare;
     if (left.kind !== right.kind) {
       return left.kind === "video" ? -1 : 1;
     }
+    const relevanceCompare = relevanceScore(left, query) - relevanceScore(right, query);
+    if (relevanceCompare !== 0) return relevanceCompare;
     const artistCompare = compareText(left.artists[0] ?? "", right.artists[0] ?? "");
     if (artistCompare !== 0) return artistCompare;
     return compareText(left.title, right.title);
@@ -296,7 +296,7 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
                     <div className="flex min-w-0 flex-1 flex-col gap-2">
                       <button type="button" className="flex min-w-0 flex-col gap-1 text-left" onClick={() => void addItems([item], "end")}>
                         <div className="flex items-center gap-2">
-                          <Badge variant={item.kind === "song" ? "default" : "secondary"}>{item.kind === "song" ? "Song" : "Video"}</Badge>
+                          <Badge variant={item.kind === "video" ? "default" : "secondary"}>{item.kind === "video" ? "Video" : "Song"}</Badge>
                           {item.duration ? <span className="text-xs text-muted-foreground">{item.duration}</span> : null}
                         </div>
                         <div className="truncate text-sm font-medium">{itemTitle(item)}</div>

@@ -10,6 +10,7 @@ Group=devops
 WorkingDirectory=/home/devops/workspace/projects/show-manager
 Environment=HOME=/home/devops
 EnvironmentFile=/home/devops/config/dev/show-manager.env
+EnvironmentFile=-/home/devops/secrets/dev/show-manager.secrets.env
 ExecStart=/usr/local/bin/node /home/devops/workspace/projects/show-manager/dist/server/src/main.js
 Restart=always
 RestartSec=3

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSong, normalizeVideo, YoutubeSearchService, type YTMusicClient } from "../server/src/services/youtube-search-service";
+import { normalizeSong, normalizeVideo, YoutubeSearchService, type YTMusicClient, type YoutubeDataApiClient } from "../server/src/services/youtube-search-service";
 
 function emptyClient(overrides: Partial<YTMusicClient> = {}): YTMusicClient {
   return {
@@ -7,6 +7,13 @@ function emptyClient(overrides: Partial<YTMusicClient> = {}): YTMusicClient {
     searchSongs: async () => [],
     searchVideos: async () => [],
     getSearchSuggestions: async () => [],
+    ...overrides,
+  };
+}
+
+function dataApiClient(overrides: Partial<YoutubeDataApiClient> = {}): YoutubeDataApiClient {
+  return {
+    searchVideos: async () => [],
     ...overrides,
   };
 }
@@ -68,6 +75,76 @@ describe("YoutubeSearchService", () => {
     expect(response.warnings[0]).toContain("song search failed");
   });
 
+  it("uses YouTube Data API for videos", async () => {
+    const service = new YoutubeSearchService(emptyClient({
+      searchVideos: async () => {
+        throw new Error("fallback should not run");
+      },
+    }), dataApiClient({
+      searchVideos: async () => [{
+        kind: "video",
+        videoId: "Kdg4DLAPC4A",
+        title: "Official video",
+        artists: ["Channel"],
+        album: null,
+        duration: "5:20",
+        durationMs: 320000,
+        thumbnails: [],
+      }],
+    }));
+
+    const response = await service.search("massive attack");
+
+    expect(response.results).toMatchObject([{ kind: "video", title: "Official video" }]);
+    expect(response.warnings).toEqual([]);
+  });
+
+  it("falls back to YouTube Music videos when YouTube Data API fails", async () => {
+    const service = new YoutubeSearchService(emptyClient({
+      searchVideos: async () => [{
+        type: "VIDEO",
+        videoId: "Kdg4DLAPC4A",
+        name: "Fallback video",
+        artist: { artistId: null, name: "Channel" },
+        duration: null,
+        thumbnails: [],
+      }],
+    }), dataApiClient({
+      searchVideos: async () => {
+        throw new Error("quotaExceeded: quota exceeded");
+      },
+    }));
+
+    const response = await service.search("massive attack");
+
+    expect(response.results).toMatchObject([{ kind: "video", title: "Fallback video" }]);
+    expect(response.warnings).toEqual(["YouTube Data API video search failed; used YouTube Music fallback: quotaExceeded: quota exceeded"]);
+  });
+
+  it("returns Data API videos when YouTube Music initialization fails", async () => {
+    const service = new YoutubeSearchService(emptyClient({
+      initialize: async () => {
+        throw new Error("init failed");
+      },
+    }), dataApiClient({
+      searchVideos: async () => [{
+        kind: "video",
+        videoId: "Kdg4DLAPC4A",
+        title: "Official video",
+        artists: ["Channel"],
+        album: null,
+        duration: "5:20",
+        durationMs: 320000,
+        thumbnails: [],
+      }],
+    }));
+
+    const response = await service.search("massive attack");
+
+    expect(response.results).toMatchObject([{ kind: "video", title: "Official video" }]);
+    expect(response.warnings).toEqual(["song search failed: init failed"]);
+  });
+
   it("returns suggestions", async () => {
     const service = new YoutubeSearchService(emptyClient({
       getSearchSuggestions: async (query: string) => [`${query} one`, `${query} two`],
@@ -85,7 +162,7 @@ describe("YoutubeSearchService", () => {
       },
     }));
 
-    await expect(service.search("first")).rejects.toThrow("init failed");
+    await expect(service.search("first")).resolves.toEqual({ results: [], warnings: ["video search failed: init failed", "song search failed: init failed"] });
     await expect(service.search("second")).resolves.toEqual({ results: [], warnings: [] });
     expect(initializeCalls).toBe(2);
   });

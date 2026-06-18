@@ -17,6 +17,7 @@ const configSchema = z.object({
   SHOW_MANAGER_DATA_ROOT: z.string().min(1).default("/home/devops/data/dev/show-manager"),
   SHOW_MANAGER_RASP_SSH_TARGET: z.string().min(1).default("rasp"),
   SHOW_MANAGER_PUBLIC_BASE_URL: z.string().url().default(DEFAULT_PUBLIC_BASE_URL),
+  YOUTUBE_DATA_API_KEY: z.string().min(1).optional(),
 });
 
 export type ShowManagerConfig = {
@@ -25,6 +26,7 @@ export type ShowManagerConfig = {
   dataRoot: string;
   raspSshTarget: string;
   publicBaseUrl: string;
+  youtubeDataApiKey: string | null;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShowManagerConfig {
@@ -40,5 +42,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShowManagerCon
     dataRoot: parsed.data.SHOW_MANAGER_DATA_ROOT,
     raspSshTarget: parsed.data.SHOW_MANAGER_RASP_SSH_TARGET,
     publicBaseUrl: parsed.data.SHOW_MANAGER_PUBLIC_BASE_URL,
+    youtubeDataApiKey: parsed.data.YOUTUBE_DATA_API_KEY ?? null,
   };
 }

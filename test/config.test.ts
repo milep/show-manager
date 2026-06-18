@@ -8,8 +8,13 @@ describe("loadConfig", () => {
     expect(config.host).toBe("127.0.0.1");
     expect(config.raspSshTarget).toBe("rasp");
     expect(config.publicBaseUrl).toBe("https://show.miikaleppanen.com");
+    expect(config.youtubeDataApiKey).toBeNull();
   });
 
+  it("loads YouTube Data API key", () => {
+    const config = loadConfig({ YOUTUBE_DATA_API_KEY: "test-key" });
+    expect(config.youtubeDataApiKey).toBe("test-key");
+  });
 
   it("rejects invalid port", () => {
     expect(() => loadConfig({ SHOW_MANAGER_PORT: "99999" })).toThrow(/Invalid config/);
