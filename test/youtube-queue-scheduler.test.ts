@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { YoutubePlaybackStatus } from "../shared/show-schema";
 import { YoutubeQueueScheduler } from "../server/src/services/youtube-queue-scheduler";
+import { YoutubeStore } from "../server/src/services/youtube-store";
 import { makeTempPaths } from "./test-helpers";
-import { ShowStateStore } from "../server/src/services/show-state-store";
 
 function playback(overrides: Partial<YoutubePlaybackStatus> = {}): YoutubePlaybackStatus {
   return {
@@ -12,6 +12,7 @@ function playback(overrides: Partial<YoutubePlaybackStatus> = {}): YoutubePlayba
     videoId: null,
     title: null,
     subtitle: null,
+    album: null,
     positionMs: null,
     durationMs: null,
     checkedAt: new Date().toISOString(),
@@ -22,24 +23,8 @@ function playback(overrides: Partial<YoutubePlaybackStatus> = {}): YoutubePlayba
 
 describe("YoutubeQueueScheduler", () => {
   it("starts first queued item", async () => {
-    const paths = await makeTempPaths();
-    const store = new ShowStateStore(paths);
-    await store.saveYoutubeQueue({
-      items: [
-        {
-          id: "item-1",
-          videoId: "GF3wagWwHjM",
-          url: "https://www.youtube.com/watch?v=GF3wagWwHjM",
-          title: null,
-          subtitle: null,
-          addedAt: new Date().toISOString(),
-          startedAt: null,
-          completedAt: null,
-        },
-      ],
-      currentItemId: null,
-      updatedAt: new Date().toISOString(),
-    });
+    const store = new YoutubeStore(await makeTempPaths());
+    store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
     const played: string[] = [];
     const scheduler = new YoutubeQueueScheduler(store, {
       getPlaybackStatus: async () => playback({ state: "idle" }),
@@ -50,44 +35,39 @@ describe("YoutubeQueueScheduler", () => {
 
     await scheduler.tick();
 
-    const queue = await store.getYoutubeQueue();
-    expect(queue.currentItemId).toBe("item-1");
+    const queue = store.getQueue();
+    expect(queue.currentItemId).not.toBeNull();
     expect(queue.items[0]?.startedAt).not.toBeNull();
     expect(played).toEqual(["GF3wagWwHjM"]);
     expect(scheduler.getCachedPlaybackStatus()?.state).toBe("buffering");
     expect(scheduler.getCachedPlaybackStatus()?.videoId).toBe("GF3wagWwHjM");
   });
 
-  it("advances ended item", async () => {
-    const paths = await makeTempPaths();
-    const store = new ShowStateStore(paths);
-    const oldStartedAt = new Date(Date.now() - 30_000).toISOString();
-    await store.saveYoutubeQueue({
-      items: [
-        {
-          id: "item-1",
-          videoId: "GF3wagWwHjM",
-          url: "https://www.youtube.com/watch?v=GF3wagWwHjM",
-          title: null,
-          subtitle: null,
-          addedAt: new Date().toISOString(),
-          startedAt: oldStartedAt,
-          completedAt: null,
-        },
-        {
-          id: "item-2",
-          videoId: "Kdg4DLAPC4A",
-          url: "https://www.youtube.com/watch?v=Kdg4DLAPC4A",
-          title: null,
-          subtitle: null,
-          addedAt: new Date().toISOString(),
-          startedAt: null,
-          completedAt: null,
-        },
-      ],
-      currentItemId: "item-1",
-      updatedAt: new Date().toISOString(),
-    });
+  it("does not mark item playing when ADB launch fails", async () => {
+    const store = new YoutubeStore(await makeTempPaths());
+    store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+    const scheduler = new YoutubeQueueScheduler(store, {
+      getPlaybackStatus: async () => playback({ state: "idle" }),
+      playVideo: async () => {
+        throw new Error("adb failed");
+      },
+    } as never);
+
+    await scheduler.tick();
+
+    const queue = store.getQueue();
+    expect(queue.currentItemId).toBeNull();
+    expect(queue.items[0]?.videoId).toBe("GF3wagWwHjM");
+    expect(scheduler.status().lastError).toBe("adb failed");
+  });
+
+  it("keeps newly started item during startup grace", async () => {
+    const store = new YoutubeStore(await makeTempPaths());
+    store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+    store.addToQueue({ sourceId: "Kdg4DLAPC4A", url: "https://www.youtube.com/watch?v=Kdg4DLAPC4A" });
+    const pending = store.firstPending();
+    if (!pending) throw new Error("Expected pending item.");
+    store.markPlaying(pending.id);
     const played: string[] = [];
     const scheduler = new YoutubeQueueScheduler(store, {
       getPlaybackStatus: async () => playback({ state: "idle" }),
@@ -96,11 +76,12 @@ describe("YoutubeQueueScheduler", () => {
       },
     } as never);
 
+    await new Promise((resolve) => setTimeout(resolve, 20));
     await scheduler.tick();
 
-    const queue = await store.getYoutubeQueue();
-    expect(queue.items[0]?.completedAt).not.toBeNull();
-    expect(queue.currentItemId).toBe("item-2");
-    expect(played).toEqual(["Kdg4DLAPC4A"]);
+    const queue = store.getQueue();
+    expect(queue.currentItemId).not.toBeNull();
+    expect(queue.items[0]?.videoId).toBe("GF3wagWwHjM");
+    expect(played).toEqual([]);
   });
 });

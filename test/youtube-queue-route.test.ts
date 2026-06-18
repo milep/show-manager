@@ -2,6 +2,7 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../server/src/app";
 import { ShowStateStore } from "../server/src/services/show-state-store";
+import { YoutubeStore } from "../server/src/services/youtube-store";
 import { makeConfig, makeRemoteStatus, makeTempPaths } from "./test-helpers";
 
 function playback() {
@@ -12,6 +13,7 @@ function playback() {
     videoId: null,
     title: null,
     subtitle: null,
+    album: null,
     positionMs: null,
     durationMs: null,
     checkedAt: new Date().toISOString(),
@@ -22,6 +24,7 @@ function playback() {
 async function makeApp() {
   const paths = await makeTempPaths();
   const store = new ShowStateStore(paths);
+  const youtubeStore = new YoutubeStore(paths);
   let ticks = 0;
   const app = createApp({
     config: makeConfig(paths.root),
@@ -38,14 +41,15 @@ async function makeApp() {
         ticks += 1;
       },
     } as never,
+    youtubeStore,
     authService: {
       createSessionFromQrToken: async () => null,
       getQrStatus: async () => ({ active: false, publicUrl: null }),
-      isValidSession: async () => false,
+      isValidSession: async () => true,
     } as never,
     runtime: { applyInProgress: false },
   });
-  return { app, store, getTicks: () => ticks };
+  return { app, store, youtubeStore, getTicks: () => ticks };
 }
 
 describe("youtube queue route", () => {
@@ -81,30 +85,36 @@ describe("youtube queue route", () => {
     expect(response.body.playback.state).toBe("idle");
   });
 
+  it("keeps saved playlists trusted-only", async () => {
+    const { app } = await makeApp();
+
+    const publicResponse = await request(app).get("/api/youtube/playlists").set("x-show-manager-access", "public");
+    const trustedResponse = await request(app).post("/api/youtube/playlists").send({ name: "Metal" });
+
+    expect(publicResponse.status).toBe(403);
+    expect(trustedResponse.status).toBe(201);
+    expect(trustedResponse.body.playlist.name).toBe("Metal");
+  });
+
+  it("rejects invalid saved playlists", async () => {
+    const { app } = await makeApp();
+
+    const response = await request(app).post("/api/youtube/playlists").send({ name: "" });
+
+    expect(response.status).toBe(400);
+  });
+
   it("skips current item", async () => {
-    const { app, store } = await makeApp();
-    const now = new Date().toISOString();
-    await store.saveYoutubeQueue({
-      items: [
-        {
-          id: "item-1",
-          videoId: "GF3wagWwHjM",
-          url: "https://www.youtube.com/watch?v=GF3wagWwHjM",
-          title: null,
-          subtitle: null,
-          addedAt: now,
-          startedAt: now,
-          completedAt: null,
-        },
-      ],
-      currentItemId: "item-1",
-      updatedAt: now,
-    });
+    const { app, youtubeStore } = await makeApp();
+    youtubeStore.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+    const pending = youtubeStore.firstPending();
+    if (!pending) throw new Error("Expected pending item.");
+    youtubeStore.markPlaying(pending.id);
 
     const response = await request(app).post("/api/youtube-queue/skip").send({});
 
     expect(response.status).toBe(200);
     expect(response.body.queue.currentItemId).toBeNull();
-    expect(response.body.queue.items[0].completedAt).not.toBeNull();
+    expect(response.body.queue.items).toEqual([]);
   });
 });

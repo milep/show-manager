@@ -1,7 +1,7 @@
-import type { YoutubePlaybackStatus, YoutubeQueueItem, YoutubeQueueState, YoutubeSchedulerStatus } from "../../../shared/show-schema.js";
+import type { YoutubePlaybackStatus, YoutubeQueueItem, YoutubeSchedulerStatus } from "../../../shared/show-schema.js";
 import { YOUTUBE_TV_PACKAGE } from "../config.js";
 import type { AdbYoutubeController } from "./adb-youtube-controller.js";
-import type { ShowStateStore } from "./show-state-store.js";
+import type { YoutubeStore } from "./youtube-store.js";
 
 const STARTUP_GRACE_MS = 15_000;
 const PLAYBACK_STATUS_CACHE_MS = 3_000;
@@ -22,6 +22,7 @@ function optimisticPlaybackStatus(item: YoutubeQueueItem, checkedAt: string): Yo
     videoId: item.videoId,
     title: item.title,
     subtitle: item.subtitle,
+    album: item.album,
     positionMs: 0,
     durationMs: null,
     checkedAt,
@@ -37,7 +38,7 @@ export class YoutubeQueueScheduler {
   private lastPlaybackStatus: YoutubePlaybackStatus | null = null;
 
   constructor(
-    private readonly store: ShowStateStore,
+    private readonly store: YoutubeStore,
     private readonly adbYoutubeController: AdbYoutubeController,
   ) {}
 
@@ -50,35 +51,25 @@ export class YoutubeQueueScheduler {
   }
 
   getCachedPlaybackStatus(): YoutubePlaybackStatus | null {
-    if (!this.lastPlaybackStatus) {
-      return null;
-    }
-    if (Date.now() - Date.parse(this.lastPlaybackStatus.checkedAt) > PLAYBACK_STATUS_CACHE_MS) {
-      return null;
-    }
+    if (!this.lastPlaybackStatus) return null;
+    if (Date.now() - Date.parse(this.lastPlaybackStatus.checkedAt) > PLAYBACK_STATUS_CACHE_MS) return null;
     return this.lastPlaybackStatus;
   }
 
   start(intervalMs = 5_000): void {
-    if (this.timer) {
-      return;
-    }
+    if (this.timer) return;
     void this.tick();
     this.timer = setInterval(() => void this.tick(), intervalMs);
   }
 
   stop(): void {
-    if (!this.timer) {
-      return;
-    }
+    if (!this.timer) return;
     clearInterval(this.timer);
     this.timer = null;
   }
 
   async tick(): Promise<void> {
-    if (this.running) {
-      return;
-    }
+    if (this.running) return;
     this.running = true;
     this.lastTickAt = new Date().toISOString();
     try {
@@ -92,78 +83,44 @@ export class YoutubeQueueScheduler {
   }
 
   private async advanceQueue(): Promise<void> {
-    const queue = await this.store.getYoutubeQueue();
+    const queue = this.store.getQueue();
+    const currentItem = queue.items.find((item) => item.id === queue.currentItemId) ?? null;
     const playback = await this.adbYoutubeController.getPlaybackStatus();
     this.lastPlaybackStatus = playback;
 
-    const now = new Date().toISOString();
-    const currentItem = this.findCurrentItem(queue);
-    let changed = false;
-
     if (!currentItem) {
-      const nextItem = this.findPendingItem(queue);
-      if (!nextItem) {
-        return;
-      }
-      await this.startItem(queue, nextItem, now);
-      changed = true;
-    } else if (activePlaybackState(playback.state)) {
-      changed = this.updateCurrentMetadata(currentItem, playback);
-    } else if (terminalPlaybackState(playback.state)) {
-      if (this.inStartupGrace(currentItem)) {
-        return;
-      }
-      this.completeItem(currentItem, now);
-      const nextItem = this.findPendingItem(queue, currentItem.id);
-      queue.currentItemId = nextItem?.id ?? null;
-      if (nextItem) {
-        await this.startItem(queue, nextItem, now);
-      }
-      changed = true;
+      await this.startNextPending();
+      return;
     }
 
-    if (changed) {
-      queue.updatedAt = now;
-      await this.store.saveYoutubeQueue(queue);
+    if (activePlaybackState(playback.state)) {
+      this.store.updateCurrentFromPlayback(playback);
+      return;
     }
-  }
 
-  private findCurrentItem(queue: YoutubeQueueState): YoutubeQueueItem | null {
-    return queue.items.find((item) => item.id === queue.currentItemId) ?? null;
-  }
-
-  private findPendingItem(queue: YoutubeQueueState, excludedItemId?: string): YoutubeQueueItem | null {
-    return queue.items.find((item) => !item.completedAt && item.id !== excludedItemId) ?? null;
-  }
-
-  private async startItem(queue: YoutubeQueueState, item: YoutubeQueueItem, now: string): Promise<void> {
-    queue.currentItemId = item.id;
-    item.startedAt = now;
-    this.lastPlaybackStatus = optimisticPlaybackStatus(item, now);
-    await this.adbYoutubeController.playVideo(item.videoId);
-  }
-
-  private updateCurrentMetadata(item: YoutubeQueueItem, playback: YoutubePlaybackStatus): boolean {
-    let changed = false;
-    if (playback.title && playback.title !== item.title) {
-      item.title = playback.title;
-      changed = true;
+    if (!terminalPlaybackState(playback.state)) {
+      return;
     }
-    if (playback.subtitle && playback.subtitle !== item.subtitle) {
-      item.subtitle = playback.subtitle;
-      changed = true;
+
+    if (this.inStartupGrace()) {
+      return;
     }
-    return changed;
+
+    this.store.completeCurrent();
+    await this.startNextPending();
   }
 
-  private inStartupGrace(item: YoutubeQueueItem): boolean {
-    if (!item.startedAt) {
-      return false;
-    }
-    return Date.now() - Date.parse(item.startedAt) < STARTUP_GRACE_MS;
+  private async startNextPending(): Promise<void> {
+    const nextItem = this.store.firstPending();
+    if (!nextItem) return;
+    this.lastPlaybackStatus = optimisticPlaybackStatus(nextItem, new Date().toISOString());
+    await this.adbYoutubeController.playVideo(nextItem.videoId);
+    this.store.markPlaying(nextItem.id);
   }
 
-  private completeItem(item: YoutubeQueueItem, now: string): void {
-    item.completedAt = now;
+  private inStartupGrace(): boolean {
+    const startedAt = this.store.currentStartedAt();
+    if (!startedAt) return false;
+    return Date.now() - Date.parse(startedAt) < STARTUP_GRACE_MS;
   }
 }

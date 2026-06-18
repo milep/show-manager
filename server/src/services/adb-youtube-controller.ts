@@ -17,6 +17,7 @@ function nowStatus(overrides: Partial<YoutubePlaybackStatus>): YoutubePlaybackSt
     videoId: null,
     title: null,
     subtitle: null,
+    album: null,
     positionMs: null,
     durationMs: null,
     checkedAt: new Date().toISOString(),
@@ -34,17 +35,18 @@ function stateName(stateCode: number): YoutubePlaybackStatus["state"] {
   return "unknown";
 }
 
-function parseDescription(line: string): { title: string | null; subtitle: string | null } {
+function parseDescription(line: string): { title: string | null; subtitle: string | null; album: string | null } {
   const marker = "description=";
   const index = line.indexOf(marker);
   if (index === -1) {
-    return { title: null, subtitle: null };
+    return { title: null, subtitle: null, album: null };
   }
   const description = line.slice(index + marker.length).trim();
-  const parts = description.split(", ");
+  const parts = description.split(", ").map((part) => part.trim()).map((part) => (part === "null" ? "" : part));
   return {
-    title: parts[0]?.trim() || null,
-    subtitle: parts[1]?.trim() && parts[1] !== "null" ? parts[1].trim() : null,
+    title: parts[0] || null,
+    subtitle: parts[1] || null,
+    album: parts[2] || null,
   };
 }
 
@@ -66,7 +68,7 @@ export function parseYoutubePlaybackStatus(output: string): YoutubePlaybackStatu
   const stateMatch = stateLine?.match(/state=(\d+)/);
   const positionMatch = stateLine?.match(/position=(\d+)/);
   const stateCode = stateMatch ? Number(stateMatch[1]) : null;
-  const description = metadataLine ? parseDescription(metadataLine) : { title: null, subtitle: null };
+  const description = metadataLine ? parseDescription(metadataLine) : { title: null, subtitle: null, album: null };
 
   return nowStatus({
     connected: true,
@@ -75,6 +77,7 @@ export function parseYoutubePlaybackStatus(output: string): YoutubePlaybackStatu
     videoId: parseVideoId(output),
     title: description.title,
     subtitle: description.subtitle,
+    album: description.album,
     positionMs: positionMatch ? Number(positionMatch[1]) : null,
     durationMs: null,
     detail: stateLine?.trim() ?? null,

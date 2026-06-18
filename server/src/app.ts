@@ -16,6 +16,7 @@ import { createShowRouter } from "./routes/show.js";
 import { createStatusRouter } from "./routes/status.js";
 import { createYoutubeQueueRouter } from "./routes/youtube-queue.js";
 import { YoutubeQueueScheduler } from "./services/youtube-queue-scheduler.js";
+import { YoutubeStore } from "./services/youtube-store.js";
 
 export type AppServices = {
   config: ShowManagerConfig;
@@ -26,6 +27,7 @@ export type AppServices = {
   raspController: RaspController;
   adbYoutubeController: AdbYoutubeController;
   youtubeQueueScheduler: YoutubeQueueScheduler;
+  youtubeStore: YoutubeStore;
   authService: AuthService;
   runtime: { applyInProgress: boolean };
 };
@@ -60,6 +62,7 @@ export function createApp(services: AppServices): Express {
 export function createAppServices(config: ShowManagerConfig, paths: DataRootPaths): AppServices {
   const store = new ShowStateStore(paths);
   const adbYoutubeController = new AdbYoutubeController(config);
+  const youtubeStore = new YoutubeStore(paths);
   return {
     config,
     paths,
@@ -68,7 +71,8 @@ export function createAppServices(config: ShowManagerConfig, paths: DataRootPath
     bundleService: new PlaylistBundleService(paths),
     raspController: new RaspController(config, paths, store),
     adbYoutubeController,
-    youtubeQueueScheduler: new YoutubeQueueScheduler(store, adbYoutubeController),
+    youtubeQueueScheduler: new YoutubeQueueScheduler(youtubeStore, adbYoutubeController),
+    youtubeStore,
     authService: new AuthService(config, paths),
     runtime: { applyInProgress: false },
   };

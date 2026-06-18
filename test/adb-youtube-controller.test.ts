@@ -21,7 +21,18 @@ describe("parseYoutubePlaybackStatus", () => {
     expect(status.state).toBe("playing");
     expect(status.title).toBe("The Chosen Legacy");
     expect(status.subtitle).toBe("Dimmu Borgir");
+    expect(status.album).toBeNull();
     expect(status.positionMs).toBe(433);
+  });
+
+  it("parses YouTube Music album field", () => {
+    const status = parseYoutubePlaybackStatus(`package=com.google.android.youtube.tv
+state=PlaybackState {state=3, position=0, speed=1.0}
+metadata: size=5, description=The Shadow Elite, Behemoth, The Shadow Elite`);
+
+    expect(status.title).toBe("The Shadow Elite");
+    expect(status.subtitle).toBe("Behemoth");
+    expect(status.album).toBe("The Shadow Elite");
   });
 
   it("ignores missing native YouTube session", () => {

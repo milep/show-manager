@@ -12,36 +12,6 @@ describe("ShowStateStore", () => {
     expect(hashDraftShow(draft)).toHaveLength(16);
   });
 
-  it("persists youtube queue state", async () => {
-    const paths = await makeTempPaths();
-    const store = new ShowStateStore(paths);
-    const queue = {
-      items: [
-        {
-          id: "item-1",
-          videoId: "GF3wagWwHjM",
-          url: "https://www.youtube.com/watch?v=GF3wagWwHjM",
-          title: null,
-          subtitle: null,
-          addedAt: new Date().toISOString(),
-          startedAt: null,
-          completedAt: null,
-        },
-      ],
-      currentItemId: null,
-      updatedAt: new Date().toISOString(),
-    };
-    await store.saveYoutubeQueue(queue);
-    await expect(store.getYoutubeQueue()).resolves.toEqual(queue);
-  });
-
-  it("returns empty youtube queue when missing", async () => {
-    const paths = await makeTempPaths();
-    const store = new ShowStateStore(paths);
-    const queue = await store.getYoutubeQueue();
-    expect(queue.items).toEqual([]);
-    expect(queue.currentItemId).toBeNull();
-  });
 
   it("rejects invalid library shape", async () => {
     const paths = await makeTempPaths();

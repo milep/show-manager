@@ -62,11 +62,40 @@ export const accessModeSchema = z.object({
   access: z.enum(["public", "trusted"]),
 });
 
+export const youtubeMediaKindSchema = z.enum(["video", "music", "unknown"]);
+
+export const youtubeMediaItemSchema = z.object({
+  id: z.string().min(1),
+  source: z.literal("youtube"),
+  sourceId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
+  url: z.string().url(),
+  kind: youtubeMediaKindSchema,
+  title: z.string().min(1).nullable(),
+  artist: z.string().min(1).nullable(),
+  album: z.string().min(1).nullable(),
+  channel: z.string().min(1).nullable(),
+  durationMs: z.number().int().nonnegative().nullable(),
+  thumbnailUrl: z.string().url().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const youtubePlaylistSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
 export const youtubeQueueItemSchema = z.object({
   id: z.string().min(1),
+  mediaItemId: z.string().min(1),
   videoId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
   url: z.string().url(),
   title: z.string().min(1).nullable(),
+  artist: z.string().min(1).nullable(),
+  album: z.string().min(1).nullable(),
+  channel: z.string().min(1).nullable(),
   subtitle: z.string().min(1).nullable(),
   addedAt: z.string().datetime(),
   startedAt: z.string().datetime().nullable(),
@@ -86,6 +115,7 @@ export const youtubePlaybackStatusSchema = z.object({
   videoId: z.string().nullable(),
   title: z.string().nullable(),
   subtitle: z.string().nullable(),
+  album: z.string().nullable(),
   positionMs: z.number().int().nonnegative().nullable(),
   durationMs: z.number().int().nonnegative().nullable(),
   checkedAt: z.string().datetime(),
@@ -122,6 +152,9 @@ export type RemoteStatus = z.infer<typeof remoteStatusSchema>;
 export type LastApplied = z.infer<typeof lastAppliedSchema>;
 export type QrDisplayStatus = z.infer<typeof qrDisplayStatusSchema>;
 export type AccessMode = z.infer<typeof accessModeSchema>;
+export type YoutubeMediaKind = z.infer<typeof youtubeMediaKindSchema>;
+export type YoutubeMediaItem = z.infer<typeof youtubeMediaItemSchema>;
+export type YoutubePlaylist = z.infer<typeof youtubePlaylistSchema>;
 export type YoutubeQueueItem = z.infer<typeof youtubeQueueItemSchema>;
 export type YoutubeQueueState = z.infer<typeof youtubeQueueStateSchema>;
 export type YoutubePlaybackStatus = z.infer<typeof youtubePlaybackStatusSchema>;

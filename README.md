@@ -50,9 +50,13 @@ Apply restarts `mpv` through `run-show.sh`.
 
 Library deletion stays out of scope for v1.
 
-## YouTube TV queue backend
+## YouTube TV party queue backend
 
 The backend can control native YouTube on the TV through ADB on `rasp`.
+
+YouTube media, saved playlists, and the party queue live in SQLite under the app state directory.
+Saved playlists are trusted-admin only.
+QR sessions can edit only the transient party queue.
 
 Prerequisite:
 
@@ -62,16 +66,24 @@ ssh rasp 'adb devices -l'
 
 The TV should appear as `192.168.68.104:5555 device`.
 
-Inspect queue and playback:
+Inspect party queue and playback:
 
 ```bash
 curl -s http://127.0.0.1:4791/api/youtube-queue
 ```
 
-Append a video:
+Append a video to the party queue:
 
 ```bash
 curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/items \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://youtu.be/GF3wagWwHjM"}'
+```
+
+Add a video next:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/items/next \
   -H 'content-type: application/json' \
   -d '{"url":"https://youtu.be/GF3wagWwHjM"}'
 ```
@@ -82,10 +94,22 @@ Skip current item:
 curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/skip
 ```
 
+Shuffle pending items:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/shuffle-rest
+```
+
 Trigger playback check:
 
 ```bash
 curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/play
+```
+
+List trusted saved playlists:
+
+```bash
+curl -s http://127.0.0.1:4791/api/youtube/playlists
 ```
 
 ## Development

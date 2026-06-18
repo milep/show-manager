@@ -5,19 +5,13 @@ import {
   draftShowSchema,
   lastAppliedSchema,
   libraryStateSchema,
-  youtubeQueueStateSchema,
   type DraftShow,
   type LastApplied,
   type LibraryState,
-  type YoutubeQueueState,
 } from "../../../shared/show-schema.js";
 import type { DataRootPaths } from "./data-root.js";
 
 const emptyLibrary: LibraryState = { items: [] };
-
-function emptyYoutubeQueue(): YoutubeQueueState {
-  return { items: [], currentItemId: null, updatedAt: new Date().toISOString() };
-}
 
 async function readJson<T>(filePath: string, fallback: T, parse: (value: unknown) => T): Promise<T> {
   try {
@@ -49,16 +43,6 @@ export class ShowStateStore {
   async saveDraftShow(draft: DraftShow): Promise<DraftShow> {
     const parsed = draftShowSchema.parse(draft);
     await writePrettyJson(this.paths.showFile, parsed);
-    return parsed;
-  }
-
-  async getYoutubeQueue(): Promise<YoutubeQueueState> {
-    return readJson(this.paths.youtubeQueueFile, emptyYoutubeQueue(), (value) => youtubeQueueStateSchema.parse(value));
-  }
-
-  async saveYoutubeQueue(queue: YoutubeQueueState): Promise<YoutubeQueueState> {
-    const parsed = youtubeQueueStateSchema.parse(queue);
-    await writePrettyJson(this.paths.youtubeQueueFile, parsed);
     return parsed;
   }
 
