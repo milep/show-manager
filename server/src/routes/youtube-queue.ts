@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { YoutubeQueueSnapshot } from "../../../shared/show-schema.js";
+import { youtubeConfirmedVideoInputSchema, type YoutubeQueueSnapshot } from "../../../shared/show-schema.js";
 import type { AppServices } from "../app.js";
 import { parseYoutubeLink, YoutubeLinkError } from "../services/youtube-link.js";
 
@@ -14,6 +14,10 @@ const loadPlaylistSchema = z.object({
 });
 
 const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
+
+const confirmedVideosImportRequestSchema = z.object({
+  items: z.array(z.unknown()).min(1),
+});
 
 const addSearchResultSchema = z.object({
   url: z.string().min(1).optional(),
@@ -200,6 +204,25 @@ export function createYoutubeQueueRouter(services: AppServices) {
     } catch (error) {
       if (error instanceof z.ZodError) {
         response.status(400).json({ error: "Search query is required." });
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post("/api/youtube/confirmed-videos/import", (request, response, next) => {
+    try {
+      if (!requireTrusted(request, response)) return;
+      const body = confirmedVideosImportRequestSchema.parse(request.body);
+      const items = body.items.flatMap((item) => {
+        const parsed = youtubeConfirmedVideoInputSchema.safeParse(item);
+        return parsed.success ? [parsed.data] : [];
+      });
+      const result = services.youtubeStore.importConfirmedVideos(items);
+      response.status(201).json({ ...result, invalid: body.items.length - items.length });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        response.status(400).json({ error: error.message });
         return;
       }
       next(error);

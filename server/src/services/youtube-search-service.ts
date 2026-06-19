@@ -13,6 +13,10 @@ export type YoutubeDataApiClient = {
   searchVideos(query: string): Promise<YoutubeSearchResult[]>;
 };
 
+export type ConfirmedVideoSearch = {
+  searchConfirmedVideos(query: string): YoutubeSearchResult[];
+};
+
 type VideoSearchResponse = {
   results: YoutubeSearchResult[];
   warning: string | null;
@@ -173,11 +177,13 @@ type YoutubeDataVideosResponse = {
 export class YoutubeSearchService {
   private readonly client: YTMusicClient;
   private readonly youtubeDataApiClient: YoutubeDataApiClient | null;
+  private readonly confirmedVideoSearch: ConfirmedVideoSearch | null;
   private initializePromise: Promise<void> | null = null;
 
-  constructor(client: YTMusicClient = new YTMusic(), youtubeDataApiClient: YoutubeDataApiClient | null = null) {
+  constructor(client: YTMusicClient = new YTMusic(), youtubeDataApiClient: YoutubeDataApiClient | null = null, confirmedVideoSearch: ConfirmedVideoSearch | null = null) {
     this.client = client;
     this.youtubeDataApiClient = youtubeDataApiClient;
+    this.confirmedVideoSearch = confirmedVideoSearch;
   }
 
   async suggestions(query: string): Promise<YoutubeSearchSuggestionsResponse> {
@@ -200,13 +206,21 @@ export class YoutubeSearchService {
   }
 
   private async searchInitialized(query: string): Promise<YoutubeSearchResponse> {
-    const [videosResult, songsResult] = await Promise.allSettled([
+    const [confirmedResult, videosResult, songsResult] = await Promise.allSettled([
+      Promise.resolve(this.confirmedVideoSearch?.searchConfirmedVideos(query) ?? []),
       this.searchVideos(query),
       this.searchSongs(query),
     ]);
 
     const warnings: string[] = [];
     const results: YoutubeSearchResult[] = [];
+
+    if (confirmedResult.status === "fulfilled") {
+      results.push(...confirmedResult.value);
+    } else {
+      warnings.push(`confirmed video search failed: ${errorMessage(confirmedResult.reason)}`);
+      logSearchError("Confirmed video search failed", confirmedResult.reason);
+    }
 
     if (videosResult.status === "fulfilled") {
       results.push(...videosResult.value.results);

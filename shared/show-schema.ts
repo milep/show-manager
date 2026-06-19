@@ -96,6 +96,25 @@ export const youtubeSearchResultSchema = z.object({
   duration: z.string().nullable(),
   durationMs: z.number().int().nonnegative().nullable(),
   thumbnails: z.array(z.string().url()),
+  confirmed: z.boolean().optional(),
+});
+
+export const youtubeConfirmedVideoInputSchema = z.object({
+  videoId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
+  title: z.string().min(1).optional(),
+  channel: z.string().min(1).optional(),
+  channelId: z.string().min(1).optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  thumbnailUrl: z.string().url().optional(),
+  source: z.string().min(1).optional(),
+  confidence: z.enum(["confirmed", "trusted-channel", "manual"]).optional(),
+  notes: z.string().min(1).optional(),
+});
+
+export const youtubeConfirmedVideosImportResponseSchema = z.object({
+  imported: z.number().int().nonnegative(),
+  skippedExisting: z.number().int().nonnegative(),
+  invalid: z.number().int().nonnegative(),
 });
 
 export const youtubeSearchResponseSchema = z.object({
@@ -176,6 +195,8 @@ export type YoutubeMediaKind = z.infer<typeof youtubeMediaKindSchema>;
 export type YoutubeMediaItem = z.infer<typeof youtubeMediaItemSchema>;
 export type YoutubePlaylist = z.infer<typeof youtubePlaylistSchema>;
 export type YoutubeSearchResult = z.infer<typeof youtubeSearchResultSchema>;
+export type YoutubeConfirmedVideoInput = z.infer<typeof youtubeConfirmedVideoInputSchema>;
+export type YoutubeConfirmedVideosImportResponse = z.infer<typeof youtubeConfirmedVideosImportResponseSchema>;
 export type YoutubeSearchResponse = z.infer<typeof youtubeSearchResponseSchema>;
 export type YoutubeSearchSuggestionsResponse = z.infer<typeof youtubeSearchSuggestionsResponseSchema>;
 export type YoutubeQueueItem = z.infer<typeof youtubeQueueItemSchema>;

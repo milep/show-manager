@@ -3,12 +3,10 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { YoutubeQueueSnapshot, YoutubeSearchResult } from "../../../shared/show-schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { addYoutubeQueueItem, addYoutubeQueueItemNext, fetchYoutubeQueue, fetchYoutubeSearchSuggestions, pauseYoutubePlayback, playYoutubePlayback, searchYoutube, skipYoutubeQueue } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -18,26 +16,52 @@ type PlaylistManagerMockProps = {
 
 type BusyAction = "search" | "add" | "next" | "pause" | "play" | "skip" | null;
 
-function itemTitle(item: YoutubeSearchResult) {
-  return [item.artists[0], item.title].filter(Boolean).join(" - ");
-}
-
 function compareText(left: string, right: string) {
   return left.localeCompare(right, undefined, { sensitivity: "base", numeric: true });
 }
 
+function normalizeSearchText(value: string) {
+  return value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+function searchTokens(value: string) {
+  return normalizeSearchText(value).split(" ").filter(Boolean);
+}
+
+function allTokensMatch(tokens: string[], value: string) {
+  const normalized = normalizeSearchText(value);
+  return tokens.length > 0 && tokens.every((token) => normalized.includes(token));
+}
+
+function hyphenTitleParts(title: string) {
+  const parts = title.split(/\s[-–—]\s/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  return { artist: parts[0] ?? "", title: parts.slice(1).join(" - ") };
+}
+
+function officialScore(item: YoutubeSearchResult) {
+  return /\bofficial\b/i.test(item.title) ? -0.5 : 0;
+}
+
 function relevanceScore(item: YoutubeSearchResult, query: string) {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const artist = (item.artists[0] ?? "").toLocaleLowerCase();
-  const title = item.title.toLocaleLowerCase();
+  const normalizedQuery = normalizeSearchText(query);
+  const tokens = searchTokens(query);
+  const artist = item.artists[0] ?? "";
+  const title = item.title;
+  const parsed = hyphenTitleParts(title);
   if (!normalizedQuery) return 6;
-  if (artist === normalizedQuery) return 0;
-  if (artist.startsWith(normalizedQuery)) return 1;
-  if (artist.includes(normalizedQuery)) return 2;
-  if (title === normalizedQuery) return 3;
-  if (title.startsWith(normalizedQuery)) return 4;
-  if (title.includes(normalizedQuery)) return 5;
-  return 6;
+  if (parsed && allTokensMatch(tokens, `${parsed.artist} ${parsed.title}`)) return 0 + officialScore(item);
+  if (allTokensMatch(tokens, title)) return 1 + officialScore(item);
+  if (allTokensMatch(tokens, `${artist} ${title}`)) return 2 + officialScore(item);
+  const normalizedArtist = normalizeSearchText(artist);
+  const normalizedTitle = normalizeSearchText(title);
+  if (normalizedArtist === normalizedQuery) return 3;
+  if (normalizedArtist.startsWith(normalizedQuery)) return 4;
+  if (normalizedArtist.includes(normalizedQuery)) return 5;
+  if (normalizedTitle === normalizedQuery) return 6 + officialScore(item);
+  if (normalizedTitle.startsWith(normalizedQuery)) return 7 + officialScore(item);
+  if (normalizedTitle.includes(normalizedQuery)) return 8 + officialScore(item);
+  return 9;
 }
 
 function compareSearchResults(query: string) {
@@ -45,8 +69,13 @@ function compareSearchResults(query: string) {
     if (left.kind !== right.kind) {
       return left.kind === "video" ? -1 : 1;
     }
+    if (left.confirmed !== right.confirmed) {
+      return left.confirmed ? -1 : 1;
+    }
     const relevanceCompare = relevanceScore(left, query) - relevanceScore(right, query);
     if (relevanceCompare !== 0) return relevanceCompare;
+    const officialCompare = officialScore(left) - officialScore(right);
+    if (officialCompare !== 0) return officialCompare;
     const artistCompare = compareText(left.artists[0] ?? "", right.artists[0] ?? "");
     if (artistCompare !== 0) return artistCompare;
     return compareText(left.title, right.title);
@@ -96,9 +125,6 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
   const selectedResults = useMemo(() => results.filter((item) => selectedIds.has(item.videoId)), [results, selectedIds]);
   const nowPlaying = snapshot?.queue.items.find((item) => item.id === snapshot.queue.currentItemId) ?? null;
   const upcomingItems = snapshot?.queue.items.filter((item) => item.id !== snapshot.queue.currentItemId) ?? [];
-  const isPaused = snapshot?.playback.state === "paused";
-  const isPlaying = snapshot?.playback.state === "playing" || snapshot?.playback.state === "buffering";
-
   async function refreshQueue(showErrors = true) {
     try {
       setSnapshot(await fetchYoutubeQueue());
@@ -198,18 +224,13 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 px-3 pb-28 pt-4 sm:px-4 sm:pt-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-2">
-          <Badge variant="secondary">Party playlist</Badge>
-          <h1 className="text-3xl font-semibold tracking-tight">Playlist Manager</h1>
-          <p className="text-sm text-muted-foreground">Search YouTube Music and add songs or videos.</p>
-        </div>
-        {showBackLink ? (
-          <Button asChild variant="outline">
+      {showBackLink ? (
+        <div className="flex justify-end">
+          <Button asChild variant="outline" size="sm">
             <a href="/">Show Manager</a>
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {error ? (
         <Card>
@@ -218,15 +239,10 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
       ) : null}
 
       <Card>
-        <CardHeader>
-          <CardTitle>Search</CardTitle>
-          <CardDescription>Suggestions autocomplete text. Search results are playable.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
+        <CardContent className="flex flex-col gap-3 p-3 sm:p-4">
           <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="youtube-search">YouTube search</FieldLabel>
                 <div className="flex gap-2">
                   <Input
                     ref={searchInputRef}
@@ -260,12 +276,9 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Results</CardTitle>
-          <CardDescription>Select multiple items to add them to the end.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
+      {(selectedResults.length || results.length) ? (
+        <Card>
+        <CardContent className="flex flex-col gap-3 p-3 sm:p-4">
           {selectedResults.length ? (
             <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
               <div className="text-sm text-muted-foreground">{selectedResults.length} selected</div>
@@ -296,10 +309,11 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
                     <div className="flex min-w-0 flex-1 flex-col gap-2">
                       <button type="button" className="flex min-w-0 flex-col gap-1 text-left" onClick={() => void addItems([item], "end")}>
                         <div className="flex items-center gap-2">
-                          <Badge variant={item.kind === "video" ? "default" : "secondary"}>{item.kind === "video" ? "Video" : "Song"}</Badge>
+                          <Badge variant={item.kind === "video" ? "default" : "secondary"}>{item.confirmed ? "Confirmed" : item.kind === "video" ? "Video" : "Song"}</Badge>
                           {item.duration ? <span className="text-xs text-muted-foreground">{item.duration}</span> : null}
                         </div>
-                        <div className="truncate text-sm font-medium">{itemTitle(item)}</div>
+                        <div className="line-clamp-3 break-words text-sm font-medium leading-snug">{item.title}</div>
+                        <div className="truncate text-xs text-muted-foreground">{item.artists[0]}</div>
                         {item.album ? <div className="truncate text-xs text-muted-foreground">{item.album}</div> : null}
                       </button>
                       <div className="flex gap-2">
@@ -315,37 +329,22 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
                 );
               })}
             </div>
-          ) : (
-            <Empty>
-              <EmptyHeader>
-                <EmptyTitle>No search results yet</EmptyTitle>
-                <EmptyDescription>Search for a song or video to add it.</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
+          ) : null}
+        </CardContent>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardContent className="p-4">
+          <div className="text-sm text-muted-foreground">Now playing</div>
+          <div className="mt-1 text-xl font-semibold">{nowPlaying ? queueTitle(nowPlaying) : snapshot?.playback.title ?? "Nothing playing"}</div>
+          {snapshot?.playback.subtitle ? <div className="mt-1 text-sm text-muted-foreground">{snapshot.playback.subtitle}</div> : null}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Now playing</CardTitle>
-          <CardDescription>{snapshot?.playback.state ?? "unknown"}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="rounded-lg border bg-background p-4">
-            <div className="text-sm text-muted-foreground">Current item</div>
-            <div className="mt-1 text-xl font-semibold">{nowPlaying ? queueTitle(nowPlaying) : snapshot?.playback.title ?? "Nothing from party list"}</div>
-            {snapshot?.playback.subtitle ? <div className="mt-1 text-sm text-muted-foreground">{snapshot.playback.subtitle}</div> : null}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Upcoming</CardTitle>
-          <CardDescription>{upcomingItems.length} item{upcomingItems.length === 1 ? "" : "s"}</CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-4">
+          <div className="mb-3 text-sm text-muted-foreground">Upcoming</div>
           {upcomingItems.length ? (
             <ol className="flex list-decimal flex-col gap-2 pl-5">
               {upcomingItems.map((item) => (
@@ -362,12 +361,7 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
       </Card>
 
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>{isPlaying ? "Playing" : isPaused ? "Paused" : "Ready"}</span>
-            <span>{snapshot?.playback.title ?? "No playback"}</span>
-          </div>
-          <Separator />
+        <div className="mx-auto max-w-3xl">
           <div className="grid grid-cols-3 gap-2">
             <Button type="button" variant="secondary" onClick={() => void runControl("play")} disabled={busyAction === "play"}>
               <PlayIcon data-icon="inline-start" />

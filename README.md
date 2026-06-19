@@ -129,6 +129,20 @@ List trusted saved playlists:
 curl -s http://127.0.0.1:4791/api/youtube/playlists
 ```
 
+Import confirmed music videos:
+
+```bash
+node scripts/youtube-scrape-confirmed.mjs 'https://www.youtube.com/playlist?list=PLM3I17KSuAh-sbQ5yfuDT9MUIEZWpFnFK' --out /tmp/confirmed-videos.jsonl
+node scripts/youtube-scrape-confirmed.mjs 'https://www.youtube.com/@NuclearBlastRecords/videos' --out /tmp/confirmed-videos.jsonl
+node scripts/youtube-import-confirmed.mjs /tmp/confirmed-videos.jsonl
+```
+
+The scraper uses `yt-dlp`.
+It does not use YouTube Data API quota.
+The importer is append-only.
+Existing video IDs are skipped.
+Confirmed videos appear first in search.
+
 ## Development
 
 ```bash

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSong, normalizeVideo, YoutubeSearchService, type YTMusicClient, type YoutubeDataApiClient } from "../server/src/services/youtube-search-service";
+import { normalizeSong, normalizeVideo, YoutubeSearchService, type ConfirmedVideoSearch, type YTMusicClient, type YoutubeDataApiClient } from "../server/src/services/youtube-search-service";
 
 function emptyClient(overrides: Partial<YTMusicClient> = {}): YTMusicClient {
   return {
@@ -14,6 +14,13 @@ function emptyClient(overrides: Partial<YTMusicClient> = {}): YTMusicClient {
 function dataApiClient(overrides: Partial<YoutubeDataApiClient> = {}): YoutubeDataApiClient {
   return {
     searchVideos: async () => [],
+    ...overrides,
+  };
+}
+
+function confirmedVideoSearch(overrides: Partial<ConfirmedVideoSearch> = {}): ConfirmedVideoSearch {
+  return {
+    searchConfirmedVideos: () => [],
     ...overrides,
   };
 }
@@ -143,6 +150,37 @@ describe("YoutubeSearchService", () => {
 
     expect(response.results).toMatchObject([{ kind: "video", title: "Official video" }]);
     expect(response.warnings).toEqual(["song search failed: init failed"]);
+  });
+
+  it("returns confirmed videos before external results", async () => {
+    const service = new YoutubeSearchService(emptyClient(), dataApiClient({
+      searchVideos: async () => [{
+        kind: "video",
+        videoId: "Kdg4DLAPC4A",
+        title: "External video",
+        artists: ["Channel"],
+        album: null,
+        duration: null,
+        durationMs: null,
+        thumbnails: [],
+      }],
+    }), confirmedVideoSearch({
+      searchConfirmedVideos: () => [{
+        kind: "video",
+        videoId: "GF3wagWwHjM",
+        title: "Confirmed video",
+        artists: ["Trusted"],
+        album: null,
+        duration: null,
+        durationMs: null,
+        thumbnails: [],
+        confirmed: true,
+      }],
+    }));
+
+    const response = await service.search("massive attack");
+
+    expect(response.results.map((item) => item.title)).toEqual(["Confirmed video", "External video"]);
   });
 
   it("returns suggestions", async () => {

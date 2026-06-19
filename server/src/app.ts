@@ -38,7 +38,7 @@ export function createApp(services: AppServices): Express {
   const app = express();
   const webDistDir = path.resolve(import.meta.dirname, "../../../dist/web");
 
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "5mb" }));
   app.use(createLoginRouter(services));
   app.use(requirePublicAuth(services));
   app.use(createAuthApiRouter(services));
@@ -76,7 +76,7 @@ export function createAppServices(config: ShowManagerConfig, paths: DataRootPath
     adbYoutubeController,
     youtubeQueueScheduler: new YoutubeQueueScheduler(youtubeStore, adbYoutubeController),
     youtubeStore,
-    youtubeSearchService: new YoutubeSearchService(undefined, youtubeDataApiClient),
+    youtubeSearchService: new YoutubeSearchService(undefined, youtubeDataApiClient, youtubeStore),
     authService: new AuthService(config, paths),
     runtime: { applyInProgress: false },
   };

@@ -158,6 +158,23 @@ describe("youtube queue route", () => {
     expect(response.body.queue.items[0]).toMatchObject({ videoId: "GF3wagWwHjM", title: "Teardrop", artist: "Massive Attack", album: "Mezzanine" });
   });
 
+  it("imports confirmed videos as trusted-only append-only data", async () => {
+    const { app, youtubeStore } = await makeApp();
+    const item = { videoId: "NP0H491rRFU", title: "IMMORTAL - Blashyrkh", channel: "Immortal", source: "playlist:test", confidence: "confirmed" };
+
+    const publicResponse = await request(app).post("/api/youtube/confirmed-videos/import").set("x-show-manager-access", "public").send({ items: [item] });
+    const firstImport = await request(app).post("/api/youtube/confirmed-videos/import").send({ items: [item] });
+    const secondImport = await request(app).post("/api/youtube/confirmed-videos/import").send({ items: [item] });
+    const invalidImport = await request(app).post("/api/youtube/confirmed-videos/import").send({ items: [{ videoId: "bad" }, item] });
+
+    expect(publicResponse.status).toBe(403);
+    expect(firstImport.status).toBe(201);
+    expect(firstImport.body).toEqual({ imported: 1, skippedExisting: 0, invalid: 0 });
+    expect(secondImport.body).toEqual({ imported: 0, skippedExisting: 1, invalid: 0 });
+    expect(invalidImport.body).toEqual({ imported: 0, skippedExisting: 1, invalid: 1 });
+    expect(youtubeStore.searchConfirmedVideos("immortal blashyrkh")[0]).toMatchObject({ videoId: "NP0H491rRFU", confirmed: true });
+  });
+
   it("keeps saved playlists trusted-only", async () => {
     const { app } = await makeApp();
 
