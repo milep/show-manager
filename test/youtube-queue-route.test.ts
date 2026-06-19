@@ -175,6 +175,23 @@ describe("youtube queue route", () => {
     expect(youtubeStore.searchConfirmedVideos("immortal blashyrkh")[0]).toMatchObject({ videoId: "NP0H491rRFU", confirmed: true });
   });
 
+  it("loads confirmed videos as radio queue", async () => {
+    const { app, youtubeStore, getTicks } = await makeApp();
+    youtubeStore.importConfirmedVideos([
+      { videoId: "NP0H491rRFU", title: "IMMORTAL - Blashyrkh", channel: "Immortal" },
+      { videoId: "Kdg4DLAPC4A", title: "Septicflesh - Portrait", channel: "Season of Mist" },
+    ]);
+
+    const publicResponse = await request(app).post("/api/youtube-queue/radio").set("x-show-manager-access", "public").send({});
+    const trustedResponse = await request(app).post("/api/youtube-queue/radio").send({});
+
+    expect(publicResponse.status).toBe(403);
+    expect(trustedResponse.status).toBe(200);
+    expect(trustedResponse.body).toEqual({ queued: 2 });
+    expect(youtubeStore.getQueue().items).toHaveLength(2);
+    expect(getTicks()).toBe(1);
+  });
+
   it("keeps saved playlists trusted-only", async () => {
     const { app } = await makeApp();
 

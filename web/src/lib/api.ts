@@ -128,3 +128,7 @@ export function pauseYoutubePlayback() {
 export function playYoutubePlayback() {
   return expectJson<YoutubeQueueSnapshot>("/api/youtube-playback/play", { method: "POST" });
 }
+
+export function startYoutubeRadio() {
+  return expectJson<{ queued: number }>("/api/youtube-queue/radio", { method: "POST" });
+}

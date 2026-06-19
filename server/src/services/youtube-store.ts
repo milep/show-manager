@@ -360,6 +360,38 @@ export class YoutubeStore {
       .map(mapConfirmedVideoSearchResult);
   }
 
+  loadConfirmedVideosToQueue(): { queued: number } {
+    const rows = this.db.prepare(`
+      select *
+      from youtube_confirmed_videos
+      where id in (select min(id) from youtube_confirmed_videos group by video_id)
+    `).all() as ConfirmedVideoRow[];
+    const shuffled = [...rows].sort(() => Math.random() - 0.5);
+    const now = nowIso();
+    const insert = this.db.prepare(`
+      insert into youtube_party_queue_items (id, media_item_id, position, status, added_at, started_at, completed_at)
+      values (?, ?, ?, 'pending', ?, null, null)
+    `);
+    const txn = this.db.transaction(() => {
+      this.db.prepare("delete from youtube_party_queue_items").run();
+      shuffled.forEach((row, index) => {
+        const media = this.upsertMedia({
+          sourceId: row.video_id,
+          url: `https://www.youtube.com/watch?v=${row.video_id}`,
+          title: row.title,
+          channel: row.channel,
+          durationMs: row.duration_ms,
+          thumbnailUrl: row.thumbnail_url,
+          kind: "video",
+        });
+        insert.run(randomUUID(), media.id, index + 1, now);
+      });
+      this.touchQueue(now);
+    });
+    txn();
+    return { queued: shuffled.length };
+  }
+
   loadPlaylistToQueue(id: string, mode: "append" | "replace" = "append"): YoutubeQueueState {
     const now = nowIso();
     const txn = this.db.transaction(() => {

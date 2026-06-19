@@ -254,6 +254,17 @@ export function createYoutubeQueueRouter(services: AppServices) {
     response.status(204).send();
   });
 
+  router.post("/api/youtube-queue/radio", async (request, response, next) => {
+    try {
+      if (!requireTrusted(request, response)) return;
+      const result = services.youtubeStore.loadConfirmedVideosToQueue();
+      await services.youtubeQueueScheduler.tick();
+      response.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/api/youtube-queue/load-playlist", async (request, response, next) => {
     try {
       if (!requireTrusted(request, response)) return;
