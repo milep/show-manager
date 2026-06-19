@@ -136,6 +136,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
   router.post("/api/youtube-playback/pause", async (_request, response, next) => {
     try {
       await services.adbYoutubeController.pause();
+      services.youtubeQueueScheduler.pauseAutomation();
       response.json(await buildSnapshot(services));
     } catch (error) {
       next(error);
@@ -144,6 +145,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
 
   router.post("/api/youtube-playback/play", async (_request, response, next) => {
     try {
+      services.youtubeQueueScheduler.resumeAutomation();
       await services.adbYoutubeController.play();
       response.json(await buildSnapshot(services));
     } catch (error) {
@@ -153,6 +155,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
 
   router.post("/api/youtube-queue/skip", async (_request, response, next) => {
     try {
+      services.youtubeQueueScheduler.resumeAutomation();
       services.youtubeStore.markCurrentCompleted();
       await services.youtubeQueueScheduler.tick();
       response.json(await buildSnapshot(services));
@@ -257,6 +260,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
   router.post("/api/youtube-queue/radio", async (request, response, next) => {
     try {
       if (!requireTrusted(request, response)) return;
+      services.youtubeQueueScheduler.resumeAutomation();
       const result = services.youtubeStore.loadConfirmedVideosToQueue();
       await services.youtubeQueueScheduler.tick();
       response.json(result);
@@ -269,6 +273,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
     try {
       if (!requireTrusted(request, response)) return;
       const body = loadPlaylistSchema.parse(request.body);
+      services.youtubeQueueScheduler.resumeAutomation();
       services.youtubeStore.loadPlaylistToQueue(body.playlistId, body.mode);
       await services.youtubeQueueScheduler.tick();
       response.json(await buildSnapshot(services));

@@ -52,6 +52,8 @@ async function makeApp(searchResponse = {
       tick: async () => {
         ticks += 1;
       },
+      pauseAutomation: () => undefined,
+      resumeAutomation: () => undefined,
     } as never,
     youtubeStore,
     youtubeSearchService: {

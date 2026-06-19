@@ -61,6 +61,30 @@ describe("YoutubeQueueScheduler", () => {
     expect(scheduler.status().lastError).toBe("adb failed");
   });
 
+  it("does not advance while manually paused", async () => {
+    const store = new YoutubeStore(await makeTempPaths());
+    store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+    store.addToQueue({ sourceId: "Kdg4DLAPC4A", url: "https://www.youtube.com/watch?v=Kdg4DLAPC4A" });
+    const pending = store.firstPending();
+    if (!pending) throw new Error("Expected pending item.");
+    store.markPlaying(pending.id);
+    const played: string[] = [];
+    const scheduler = new YoutubeQueueScheduler(store, {
+      getPlaybackStatus: async () => playback({ state: "idle" }),
+      playVideo: async (videoId: string) => {
+        played.push(videoId);
+      },
+    } as never);
+    scheduler.pauseAutomation();
+
+    await scheduler.tick();
+
+    const queue = store.getQueue();
+    expect(queue.currentItemId).toBe(pending.id);
+    expect(queue.items.map((item) => item.videoId)).toEqual(["GF3wagWwHjM", "Kdg4DLAPC4A"]);
+    expect(played).toEqual([]);
+  });
+
   it("keeps newly started item during startup grace", async () => {
     const store = new YoutubeStore(await makeTempPaths());
     store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
