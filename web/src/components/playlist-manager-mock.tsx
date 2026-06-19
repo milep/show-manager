@@ -43,37 +43,70 @@ function officialScore(item: YoutubeSearchResult) {
   return /\bofficial\b/i.test(item.title) ? -0.5 : 0;
 }
 
+function anyArtistMatchesToken(artists: string[], tokens: string[]) {
+  return artists.some((artist) => {
+    const normalized = normalizeSearchText(artist);
+    return tokens.some((token) => normalized.includes(token));
+  });
+}
+
+function bestArtistScore(artists: string[], query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+  let score = 10;
+  for (const artist of artists) {
+    const normalized = normalizeSearchText(artist);
+    if (normalized === normalizedQuery) score = Math.min(score, 0);
+    else if (normalized.startsWith(normalizedQuery)) score = Math.min(score, 1);
+    else if (normalized.includes(normalizedQuery)) score = Math.min(score, 2);
+  }
+  return score;
+}
+
 function relevanceScore(item: YoutubeSearchResult, query: string) {
   const normalizedQuery = normalizeSearchText(query);
   const tokens = searchTokens(query);
   const artist = item.artists[0] ?? "";
   const title = item.title;
   const parsed = hyphenTitleParts(title);
-  if (!normalizedQuery) return 6;
-  if (parsed && allTokensMatch(tokens, `${parsed.artist} ${parsed.title}`)) return 0 + officialScore(item);
-  if (allTokensMatch(tokens, title)) return 1 + officialScore(item);
-  if (allTokensMatch(tokens, `${artist} ${title}`)) return 2 + officialScore(item);
-  const normalizedArtist = normalizeSearchText(artist);
+  const artistCandidates = [artist, parsed?.artist].filter((value): value is string => Boolean(value));
   const normalizedTitle = normalizeSearchText(title);
-  if (normalizedArtist === normalizedQuery) return 3;
-  if (normalizedArtist.startsWith(normalizedQuery)) return 4;
-  if (normalizedArtist.includes(normalizedQuery)) return 5;
-  if (normalizedTitle === normalizedQuery) return 6 + officialScore(item);
-  if (normalizedTitle.startsWith(normalizedQuery)) return 7 + officialScore(item);
-  if (normalizedTitle.includes(normalizedQuery)) return 8 + officialScore(item);
-  return 9;
+  if (!normalizedQuery) return 10;
+  const artistScore = bestArtistScore(artistCandidates, query);
+  if (artistScore < 10) return artistScore;
+  if (parsed && anyArtistMatchesToken([parsed.artist], tokens) && allTokensMatch(tokens, `${parsed.artist} ${parsed.title}`)) return 3 + officialScore(item);
+  if (anyArtistMatchesToken([artist], tokens) && allTokensMatch(tokens, `${artist} ${title}`)) return 4 + officialScore(item);
+  if (normalizedTitle === normalizedQuery) return 5 + officialScore(item);
+  if (normalizedTitle.startsWith(normalizedQuery)) return 6 + officialScore(item);
+  if (normalizedTitle.includes(normalizedQuery)) return 7 + officialScore(item);
+  if (parsed && allTokensMatch(tokens, `${parsed.artist} ${parsed.title}`)) return 8 + officialScore(item);
+  if (allTokensMatch(tokens, `${artist} ${title}`)) return 9 + officialScore(item);
+  return 10;
+}
+
+function artistMatchesQuery(item: YoutubeSearchResult, query: string) {
+  const tokens = searchTokens(query);
+  const parsed = hyphenTitleParts(item.title);
+  const candidates = [item.artists[0], parsed?.artist].filter((value): value is string => Boolean(value));
+  return anyArtistMatchesToken(candidates, tokens);
+}
+
+function resultPriority(item: YoutubeSearchResult, query: string) {
+  const artistMatch = artistMatchesQuery(item, query);
+  if (item.confirmed && artistMatch) return 0;
+  if (item.confirmed) return 1;
+  if (artistMatch) return 2;
+  return 3;
 }
 
 function compareSearchResults(query: string) {
   return (left: YoutubeSearchResult, right: YoutubeSearchResult) => {
+    const priorityCompare = resultPriority(left, query) - resultPriority(right, query);
+    if (priorityCompare !== 0) return priorityCompare;
+    const relevanceCompare = relevanceScore(left, query) - relevanceScore(right, query);
+    if (relevanceCompare !== 0) return relevanceCompare;
     if (left.kind !== right.kind) {
       return left.kind === "video" ? -1 : 1;
     }
-    if (left.confirmed !== right.confirmed) {
-      return left.confirmed ? -1 : 1;
-    }
-    const relevanceCompare = relevanceScore(left, query) - relevanceScore(right, query);
-    if (relevanceCompare !== 0) return relevanceCompare;
     const officialCompare = officialScore(left) - officialScore(right);
     if (officialCompare !== 0) return officialCompare;
     const artistCompare = compareText(left.artists[0] ?? "", right.artists[0] ?? "");

@@ -135,10 +135,11 @@ Import confirmed music videos:
 node scripts/youtube-scrape-confirmed.mjs 'https://www.youtube.com/playlist?list=PLM3I17KSuAh-sbQ5yfuDT9MUIEZWpFnFK' --out /tmp/confirmed-videos.jsonl
 node scripts/youtube-scrape-confirmed.mjs 'https://www.youtube.com/@NuclearBlastRecords/videos' --out /tmp/confirmed-videos.jsonl
 node scripts/youtube-import-confirmed.mjs /tmp/confirmed-videos.jsonl
+sudo env PATH=/home/devops/.local/bin:/usr/local/bin:/usr/bin:/bin node scripts/youtube-backfill-confirmed.mjs
 ```
 
-The scraper uses `yt-dlp`.
-It does not use YouTube Data API quota.
+The scraper uses `yt-dlp` first.
+For playlists where `yt-dlp` only returns 100 items, the scraper falls back to YouTube Data API when `YOUTUBE_DATA_API_KEY` is available.
 The importer is append-only.
 Existing video IDs are skipped.
 Confirmed videos appear first in search.
