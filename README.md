@@ -10,6 +10,32 @@ The project is built for one trusted household deployment.
 It is not a general SaaS platform.
 It favors direct behavior over plugins.
 
+## Use cases
+
+### Always-on display show
+
+A Raspberry Pi connects to an always-on display.
+The display can loop uploaded images and videos.
+The server keeps the media library and playlist editable from a browser.
+Apply pushes the active bundle to the Pi.
+The Pi plays the bundle with `mpv`.
+
+### YouTube party playlist
+
+The party playlist lets guests add music and videos from their phones.
+Guests open the public playlist UI through a QR code.
+They do not need Wi-Fi access.
+They do not need a shared YouTube account.
+
+Playback uses the native YouTube app on Android TV.
+The TV is logged into a YouTube Premium account.
+This keeps playback inside the ad-free account session.
+The server controls the TV through ADB.
+
+Native YouTube playlists are not a good fit here.
+They are awkward to update live during a party.
+The transient party queue is easier to search, edit, skip, clear, and replace in real time.
+
 ## Features
 
 - Browser UI for managing display playlists.
