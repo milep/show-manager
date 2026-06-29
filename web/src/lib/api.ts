@@ -132,3 +132,7 @@ export function playYoutubePlayback() {
 export function startYoutubeRadio() {
   return expectJson<{ queued: number }>("/api/youtube-queue/radio", { method: "POST" });
 }
+
+export function clearYoutubeQueue() {
+  return expectJson<YoutubeQueueSnapshot>("/api/youtube-queue/clear", { method: "POST" });
+}

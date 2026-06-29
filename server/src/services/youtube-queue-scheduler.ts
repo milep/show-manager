@@ -36,7 +36,6 @@ export class YoutubeQueueScheduler {
   private lastTickAt: string | null = null;
   private lastError: string | null = null;
   private lastPlaybackStatus: YoutubePlaybackStatus | null = null;
-  private manuallyPaused = false;
 
   constructor(
     private readonly store: YoutubeStore,
@@ -52,11 +51,11 @@ export class YoutubeQueueScheduler {
   }
 
   pauseAutomation(): void {
-    this.manuallyPaused = true;
+    this.store.setAutomationPaused(true);
   }
 
   resumeAutomation(): void {
-    this.manuallyPaused = false;
+    this.store.setAutomationPaused(false);
   }
 
   getCachedPlaybackStatus(): YoutubePlaybackStatus | null {
@@ -97,7 +96,7 @@ export class YoutubeQueueScheduler {
     const playback = await this.adbYoutubeController.getPlaybackStatus();
     this.lastPlaybackStatus = playback;
 
-    if (this.manuallyPaused) {
+    if (this.store.isAutomationPaused()) {
       if (currentItem && activePlaybackState(playback.state)) {
         this.store.updateCurrentFromPlayback(playback);
       }

@@ -234,6 +234,21 @@ export class YoutubeStore {
     return this.getQueue();
   }
 
+  clearQueue(): YoutubeQueueState {
+    const now = nowIso();
+    this.db.prepare("delete from youtube_party_queue_items").run();
+    this.touchQueue(now);
+    return this.getQueue();
+  }
+
+  setAutomationPaused(paused: boolean): void {
+    this.db.prepare("insert into youtube_meta (key, value) values ('party_queue_automation_paused', ?) on conflict(key) do update set value = excluded.value").run(paused ? "true" : "false");
+  }
+
+  isAutomationPaused(): boolean {
+    return this.getMeta("party_queue_automation_paused") === "true";
+  }
+
   removeQueueItem(id: string): YoutubeQueueState {
     const now = nowIso();
     this.db.prepare("delete from youtube_party_queue_items where id = ? and status != 'playing'").run(id);

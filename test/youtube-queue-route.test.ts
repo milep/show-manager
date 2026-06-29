@@ -177,6 +177,19 @@ describe("youtube queue route", () => {
     expect(youtubeStore.searchConfirmedVideos("immortal blashyrkh")[0]).toMatchObject({ videoId: "NP0H491rRFU", confirmed: true });
   });
 
+  it("clears party queue as trusted-only action", async () => {
+    const { app, youtubeStore, playbackActions } = await makeApp();
+    youtubeStore.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+
+    const publicResponse = await request(app).post("/api/youtube-queue/clear").set("x-show-manager-access", "public").send({});
+    const trustedResponse = await request(app).post("/api/youtube-queue/clear").send({});
+
+    expect(publicResponse.status).toBe(403);
+    expect(trustedResponse.status).toBe(200);
+    expect(trustedResponse.body.queue.items).toEqual([]);
+    expect(playbackActions).toEqual(["pause"]);
+  });
+
   it("loads confirmed videos as radio queue", async () => {
     const { app, youtubeStore, getTicks } = await makeApp();
     youtubeStore.importConfirmedVideos([

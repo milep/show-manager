@@ -1,16 +1,51 @@
 # Show Manager
 
-Show controller for the `raspberrypi` display.
+A self-hosted display-show and party-playlist controller.
 
-## Stack
+Show Manager runs on a home server.
+It manages a Raspberry Pi display player.
+It also controls YouTube playback on Android TV.
 
-- React + Vite frontend
-- shadcn/ui components
-- Node + TypeScript backend
-- Express HTTP server
-- `ffmpeg` and `ffprobe` for thumbnails and metadata
-- `ssh` and `scp` for remote apply
-- `mpv` on `raspberrypi`
+The project is built for one trusted household deployment.
+It is not a general SaaS platform.
+It favors direct behavior over plugins.
+
+## Features
+
+- Browser UI for managing display playlists.
+- Uploads for images and videos.
+- Thumbnail and metadata extraction with `ffmpeg` and `ffprobe`.
+- Draft editing with explicit apply.
+- Raspberry Pi deployment over `ssh` and `scp`.
+- `mpv` playback on the Raspberry Pi.
+- Public QR login for guests.
+- Public mobile party playlist UI.
+- YouTube and YouTube Music search.
+- Android TV YouTube control through ADB.
+- SQLite-backed transient party queue.
+- Trusted-admin saved playlists.
+- Trusted-admin radio mode from confirmed music videos.
+- Confirmed music-video imports from playlists and channels.
+- Optional YouTube Data API support for better video search.
+- `yt-dlp` import helpers for quota-light scraping.
+
+## Architecture
+
+- React + Vite frontend.
+- shadcn/ui components.
+- Node.js + TypeScript backend.
+- Express HTTP server.
+- Shared Zod schemas.
+- SQLite state for YouTube data.
+- `systemd` production runtime.
+
+## Hardware model
+
+- One host server runs the web app.
+- One Raspberry Pi runs the display player.
+- One Android TV runs the YouTube app.
+- The host reaches the Pi through SSH.
+- The Pi reaches Android TV through ADB.
 
 ## Repo layout
 
@@ -24,39 +59,57 @@ Show controller for the `raspberrypi` display.
 
 ## Runtime paths
 
+Default development paths:
+
 - Config: `/home/devops/config/dev/show-manager.env`
+- Optional secrets: `/home/devops/secrets/dev/show-manager.secrets.env`
 - Data root: `/home/devops/data/dev/show-manager`
 - Uploads: `/home/devops/data/dev/show-manager/uploads`
 - State: `/home/devops/data/dev/show-manager/state`
 - Runtime: `/home/devops/data/dev/show-manager/runtime`
 - Remote root: `/home/pi/show-player`
 
+These paths are local deployment defaults.
+Change them before using another host layout.
+
 ## Supported media
 
 - Images: `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`
 - Videos: `.mp4`, `.mov`, `.mkv`, `.webm`
 
-## Draft and apply
+## Display show workflow
 
 Edits save into one local draft.
 
 Apply builds one active bundle.
 
-Apply pushes only playlist media to `rasp`.
+Apply pushes only playlist media to the Raspberry Pi.
 
 Apply updates `/home/pi/show-player/active`.
 
 Apply restarts `mpv` through `run-show.sh`.
 
-Library deletion stays out of scope for v1.
+Library deletion stays out of scope for now.
 
-## YouTube TV party queue backend
+## YouTube TV party playlist
 
-The backend can control native YouTube on the TV through ADB on `rasp`.
+The backend controls native YouTube on Android TV through ADB.
 
-YouTube media, saved playlists, and the party queue live in SQLite under the app state directory.
+YouTube media, saved playlists, confirmed videos, and the party queue live in SQLite under the app state directory.
 Saved playlists are trusted-admin only.
-QR sessions can edit only the transient party queue.
+Confirmed-video imports are trusted-admin only.
+QR sessions can search and edit only the transient party queue.
+
+Party features:
+
+- Search YouTube songs and videos.
+- Add videos to the queue end.
+- Add one item next.
+- Multi-select results.
+- Pause, play, and skip from mobile UI.
+- Clear party queue from trusted UI.
+- Radio mode shuffles all confirmed videos into the queue.
+- Pause persists across service restarts.
 
 Prerequisite:
 
@@ -123,6 +176,18 @@ Trigger playback check:
 curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/play
 ```
 
+Clear party queue:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/clear
+```
+
+Start confirmed-video radio:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/radio
+```
+
 List trusted saved playlists:
 
 ```bash
@@ -139,10 +204,11 @@ sudo env PATH=/home/devops/.local/bin:/usr/local/bin:/usr/bin:/bin node scripts/
 ```
 
 The scraper uses `yt-dlp` first.
-For playlists where `yt-dlp` only returns 100 items, the scraper falls back to YouTube Data API when `YOUTUBE_DATA_API_KEY` is available.
+For playlists where `yt-dlp` only returns part of the playlist, the scraper falls back to YouTube Data API when `YOUTUBE_DATA_API_KEY` is available.
 The importer is append-only.
 Existing video IDs are skipped.
 Confirmed videos appear first in search.
+Use the backfill script to add thumbnails and channel metadata.
 
 ## Development
 
@@ -165,9 +231,9 @@ npm run dev:web
 
 Service binds to localhost in the public setup.
 
-Caddy serves tailnet access without login.
+A reverse proxy can serve trusted tailnet access without login.
 
-Caddy serves `show.miikaleppanen.com` with QR-session auth.
+A public route can use QR-session auth.
 
 ## Key env vars
 
@@ -180,6 +246,7 @@ Important vars:
 - `SHOW_MANAGER_DATA_ROOT`
 - `SHOW_MANAGER_RASP_SSH_TARGET`
 - `SHOW_MANAGER_PUBLIC_BASE_URL`
+- `YOUTUBE_DATA_API_KEY` optional secret for YouTube Data API video search and playlist import fallback.
 
 Fixed local values stay in code:
 
@@ -200,14 +267,14 @@ Old remote releases prune automatically after apply.
 
 Default retention keeps 3 releases.
 
-## Tailscale access
-
-Default tailnet URL: `http://100.65.130.34:4791`.
+## Access model
 
 Tailnet access is trusted.
-
-Public URL: `https://show.miikaleppanen.com`.
 
 Public access requires QR login.
 
 QR sessions last 24 hours.
+
+A reverse proxy such as Caddy can expose separate tailnet and public routes.
+Public routes should send `x-show-manager-access: public`.
+Trusted routes should omit that header.

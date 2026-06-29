@@ -173,6 +173,18 @@ export function createYoutubeQueueRouter(services: AppServices) {
     }
   });
 
+  router.post("/api/youtube-queue/clear", async (request, response, next) => {
+    try {
+      if (!requireTrusted(request, response)) return;
+      services.youtubeQueueScheduler.resumeAutomation();
+      services.youtubeStore.clearQueue();
+      await services.adbYoutubeController.pause();
+      response.json(await buildSnapshot(services));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/api/youtube-queue/play", async (_request, response, next) => {
     try {
       await services.youtubeQueueScheduler.tick();

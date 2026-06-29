@@ -8,7 +8,7 @@ import { UploadPanel } from "@/components/upload-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { applyShow, fetchShowManagerSnapshot, fetchStatus, saveShow, setQrDisplay, startYoutubeRadio, type ShowManagerSnapshot, uploadFile } from "@/lib/api";
+import { applyShow, clearYoutubeQueue, fetchShowManagerSnapshot, fetchStatus, saveShow, setQrDisplay, startYoutubeRadio, type ShowManagerSnapshot, uploadFile } from "@/lib/api";
 import { createPlaylistItemId } from "@/lib/playlist-item-id";
 
 type MobileSection = "controls" | "playlist" | "library";
@@ -25,6 +25,7 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
   const [qrBusy, setQrBusy] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [radioBusy, setRadioBusy] = useState(false);
+  const [queueBusy, setQueueBusy] = useState(false);
   const [radioMessage, setRadioMessage] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -144,6 +145,19 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
     }
   }
 
+  async function handleClearQueue() {
+    setQueueBusy(true);
+    setRadioMessage(null);
+    try {
+      await clearYoutubeQueue();
+      setRadioMessage("Party list cleared.");
+    } catch (error) {
+      setRadioMessage(error instanceof Error ? error.message : "Clear failed.");
+    } finally {
+      setQueueBusy(false);
+    }
+  }
+
   function updateMobileSection(value: string) {
     if (value) {
       setMobileSection(value as MobileSection);
@@ -167,6 +181,9 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="secondary" onClick={() => void handleRadio()} disabled={radioBusy}>
             Radio
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void handleClearQueue()} disabled={queueBusy}>
+            Clear party list
           </Button>
           <Button asChild variant="outline">
             <a href="/playlist-manager">Playlist Manager</a>
