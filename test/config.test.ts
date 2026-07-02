@@ -7,7 +7,7 @@ describe("loadConfig", () => {
     expect(config.port).toBe(4791);
     expect(config.host).toBe("127.0.0.1");
     expect(config.raspSshTarget).toBe("rasp");
-    expect(config.publicBaseUrl).toBe("https://show.miikaleppanen.com");
+    expect(config.publicBaseUrl).toBe("https://show.example.invalid");
     expect(config.youtubeDataApiKey).toBeNull();
   });
 

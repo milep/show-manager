@@ -143,7 +143,7 @@ Prerequisite:
 ssh rasp 'adb devices -l'
 ```
 
-The TV should appear as `192.168.68.104:5555 device`.
+The TV should appear as `192.168.1.104:5555 device`.
 
 Search YouTube Music:
 
@@ -302,5 +302,7 @@ Public access requires QR login.
 QR sessions last 24 hours.
 
 A reverse proxy such as Caddy can expose separate tailnet and public routes.
-Public routes should send `x-show-manager-access: public`.
+Public routes must send `x-show-manager-access: public`.
 Trusted routes should omit that header.
+Do not expose the backend directly to the public internet.
+A missing public header means trusted access.

@@ -52,7 +52,7 @@ describe("AdbYoutubeController", () => {
     await controller.playVideo("GF3wagWwHjM");
 
     expect(calls).toEqual([
-      { command: "ssh", args: ["rasp", "adb 'connect' '192.168.68.104:5555'"] },
+      { command: "ssh", args: ["rasp", "adb 'connect' '192.168.1.104:5555'"] },
       {
         command: "ssh",
         args: [

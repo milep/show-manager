@@ -25,22 +25,54 @@ describe.sequential("auth routes", () => {
     expect(response.status).toBe(401);
   });
 
-  it("allows public requests after qr login", async () => {
+  it("allows public playlist requests after qr login", async () => {
     const paths = await makeTempPaths();
     const services = createAppServices(makeConfig(paths.root), paths);
     services.raspController.showQrCode = vi.fn(async () => undefined);
     services.raspController.hideQrCode = vi.fn(async () => undefined);
+    services.adbYoutubeController.getPlaybackStatus = vi.fn(async () => ({
+      connected: false,
+      state: "idle",
+      packageName: null,
+      videoId: null,
+      title: null,
+      subtitle: null,
+      album: null,
+      positionMs: null,
+      durationMs: null,
+      checkedAt: new Date().toISOString(),
+      detail: null,
+    }));
     const app = createApp(services);
 
     const toggle = await request(app).put("/api/auth/qr-display").send({ active: true });
     const loginPath = new URL(toggle.body.publicUrl).pathname;
     const login = await request(app).get(loginPath).set("x-show-manager-access", "public");
     const cookie = login.headers["set-cookie"];
-    const response = await request(app).get("/api/show").set("x-show-manager-access", "public").set("cookie", cookie);
+    const response = await request(app).get("/api/youtube-queue").set("x-show-manager-access", "public").set("cookie", cookie);
 
     expect(login.status).toBe(302);
     expect(login.headers.location).toBe("/playlist-manager");
     expect(response.status).toBe(200);
+  });
+
+  it("blocks public admin api requests after qr login", async () => {
+    const paths = await makeTempPaths();
+    const services = createAppServices(makeConfig(paths.root), paths);
+    services.raspController.showQrCode = vi.fn(async () => undefined);
+    const app = createApp(services);
+
+    const toggle = await request(app).put("/api/auth/qr-display").send({ active: true });
+    const loginPath = new URL(toggle.body.publicUrl).pathname;
+    const login = await request(app).get(loginPath).set("x-show-manager-access", "public");
+    const cookie = login.headers["set-cookie"];
+    const show = await request(app).get("/api/show").set("x-show-manager-access", "public").set("cookie", cookie);
+    const library = await request(app).get("/api/library").set("x-show-manager-access", "public").set("cookie", cookie);
+    const status = await request(app).get("/api/status").set("x-show-manager-access", "public").set("cookie", cookie);
+
+    expect(show.status).toBe(403);
+    expect(library.status).toBe(403);
+    expect(status.status).toBe(403);
   });
 
   it("reports public and trusted access modes", async () => {

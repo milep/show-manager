@@ -18,7 +18,8 @@ export function makeConfig(root: string): ShowManagerConfig {
     port: 4791,
     dataRoot: root,
     raspSshTarget: "rasp",
-    publicBaseUrl: "https://show.miikaleppanen.com",
+    publicBaseUrl: "https://show.example.invalid",
+    youtubeDataApiKey: null,
   };
 }
 

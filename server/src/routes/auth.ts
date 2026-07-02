@@ -15,6 +15,30 @@ function loginResultHtml(message: string) {
   return `<!doctype html><html><head><title>Show Manager login</title><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body style="font-family: system-ui; margin: 2rem; max-width: 36rem;"><h1>${message}</h1><p><a href="/playlist-manager">Open Playlist Manager</a></p></body></html>`;
 }
 
+const publicGetApis = new Set([
+  "/api/auth/access",
+  "/api/youtube-queue",
+  "/api/youtube/search",
+  "/api/youtube/search-suggestions",
+]);
+
+const publicPostApis = new Set([
+  "/api/youtube-queue/items",
+  "/api/youtube-queue/items/next",
+  "/api/youtube-playback/pause",
+  "/api/youtube-playback/play",
+  "/api/youtube-queue/skip",
+  "/api/youtube-queue/shuffle-rest",
+  "/api/youtube-queue/play",
+]);
+
+function publicApiAllowed(method: string, path: string) {
+  if (method === "GET") return publicGetApis.has(path);
+  if (method === "POST") return publicPostApis.has(path);
+  if (method === "DELETE") return /^\/api\/youtube-queue\/items\/[^/]+$/.test(path);
+  return false;
+}
+
 export function createLoginRouter(services: AppServices) {
   const router = Router();
 
@@ -112,7 +136,11 @@ export function requirePublicAuth(services: AppServices) {
       }
       const sessionToken = parseCookie(request.headers.cookie, SESSION_COOKIE_NAME);
       if (await services.authService.isValidSession(sessionToken)) {
-        next();
+        if (!wantsJson(request.path) || publicApiAllowed(request.method, request.path)) {
+          next();
+          return;
+        }
+        response.status(403).json({ error: "Trusted access required." });
         return;
       }
       if (wantsJson(request.path)) {

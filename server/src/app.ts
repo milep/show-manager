@@ -1,6 +1,6 @@
 import express, { type Express } from "express";
 import path from "node:path";
-import type { ShowManagerConfig } from "./config.js";
+import { PUBLIC_ACCESS_HEADER, PUBLIC_ACCESS_VALUE, type ShowManagerConfig } from "./config.js";
 import type { DataRootPaths } from "./services/data-root.js";
 import { MediaStore } from "./services/media-store.js";
 import { PlaylistBundleService } from "./services/playlist-bundle.js";
@@ -53,8 +53,9 @@ export function createApp(services: AppServices): Express {
     response.sendFile(path.join(webDistDir, "index.html"));
   });
 
-  app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
-    const message = error instanceof Error ? error.message : "Internal server error";
+  app.use((error: unknown, request: express.Request, response: express.Response, _next: express.NextFunction) => {
+    const isPublic = request.header(PUBLIC_ACCESS_HEADER) === PUBLIC_ACCESS_VALUE;
+    const message = !isPublic && error instanceof Error ? error.message : "Internal server error";
     response.status(500).json({ error: message });
   });
 
