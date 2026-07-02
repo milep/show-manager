@@ -1,5 +1,5 @@
 import type { YoutubePlaybackStatus } from "../../../shared/show-schema.js";
-import { ADB_TV_TARGET, YOUTUBE_TV_PACKAGE, type ShowManagerConfig } from "../config.js";
+import { YOUTUBE_TV_PACKAGE, type ShowManagerConfig } from "../config.js";
 import { runCommand, type CommandRunner } from "./run-command.js";
 
 const MEDIA_STATE_NONE = 0;
@@ -100,7 +100,7 @@ export class AdbYoutubeController {
   }
 
   async connect(): Promise<void> {
-    await this.runRemoteAdb(["connect", ADB_TV_TARGET]);
+    await this.runRemoteAdb(["connect", this.config.adbTvTarget]);
   }
 
   async getPlaybackStatus(): Promise<YoutubePlaybackStatus> {
