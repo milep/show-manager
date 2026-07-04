@@ -2,6 +2,7 @@
   "name": "show-manager",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "npm run build:web && npm run build:server",
