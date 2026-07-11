@@ -1,0 +1,14 @@
+[Unit]
+Description=Show Manager Raspberry Pi slideshow player
+After=local-fs.target
+ConditionPathExists=/home/pi/show-player/active/launch-player.sh
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env bash /home/pi/show-player/active/launch-player.sh
+Restart=no
+KillMode=control-group
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

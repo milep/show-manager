@@ -247,7 +247,7 @@ npm run dev:server
 npm run dev:web
 ```
 
-## Service install
+## VPS service install
 
 ```bash
 ./scripts/install-systemd-dev.sh
@@ -256,6 +256,34 @@ npm run dev:web
 ```
 
 Service binds to localhost in the public setup.
+
+## Raspberry Pi player install
+
+The Pi requires `mpv`, `openvt`, SSH, and passwordless sudo for user `pi`.
+Tailscale provides the existing VPS-to-Pi SSH path.
+
+Install the slideshow service from the VPS:
+
+```bash
+./scripts/install-rasp-player.sh rasp
+```
+
+Apply a fresh show after the first service installation.
+The fresh bundle uses native `systemd` lifecycle control.
+The service starts the active `mpv` slideshow once during boot.
+The installer masks `getty@tty1.service` for exclusive display ownership.
+Local TTY1 login remains unavailable while that unit stays masked.
+SSH access remains unchanged.
+The service does not restart `mpv` after a crash.
+Applying a show starts or restarts slideshow playback.
+YouTube playback and ADB connections never start automatically.
+
+Inspect the Pi service:
+
+```bash
+ssh rasp 'systemctl is-enabled show-player.service'
+ssh rasp 'systemctl status show-player.service --no-pager'
+```
 
 A reverse proxy can serve trusted tailnet access without login.
 

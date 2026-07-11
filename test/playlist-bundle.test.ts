@@ -33,7 +33,11 @@ describe("PlaylistBundleService", () => {
     const launchScript = await readFile(bundle.launchScriptPath, "utf8");
     const script = await readFile(bundle.runScriptPath, "utf8");
     expect(playlist.trim().split("\n")).toEqual(["media/001-image-1.jpg", "media/002-video-1.mp4", "media/002-video-1.mp4"]);
-    expect(launchScript).toContain("openvt -f -s -w -c 1 -- mpv --fs --no-terminal");
-    expect(script).toContain('"$ROOT_DIR/launch-player.sh"');
+    expect(launchScript).toContain("exec openvt -f -s -w -c 1 -- mpv --fs --no-terminal");
+    expect(launchScript).not.toContain("nohup");
+    expect(script).toContain('sudo systemctl start "$PLAYER_SERVICE"');
+    expect(script).toContain('sudo systemctl stop "$PLAYER_SERVICE"');
+    expect(script).toContain('sudo systemctl restart "$PLAYER_SERVICE"');
+    expect(script).toContain('systemctl is-active "$PLAYER_SERVICE"');
   });
 });

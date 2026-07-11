@@ -65,52 +65,40 @@ LOG_FILE="$PLAYER_ROOT/player.log"
 PLAYLIST_FILE="$ROOT_DIR/playlist.txt"
 IMAGE_DURATION=${shellEscape(String(draft.settings.imageDurationSeconds))}
 mkdir -p "$PLAYER_ROOT"
-sudo rm -f "$LOG_FILE" "$PID_FILE"
+rm -f "$LOG_FILE" "$PID_FILE"
 touch "$LOG_FILE"
-nohup sudo openvt -f -s -w -c 1 -- mpv --fs --no-terminal --really-quiet --audio=no --vo=gpu --gpu-context=drm --loop-playlist=inf --image-display-duration="$IMAGE_DURATION" --playlist="$PLAYLIST_FILE" >> "$LOG_FILE" 2>&1 &
-echo $! > "$PID_FILE"
+exec openvt -f -s -w -c 1 -- mpv --fs --no-terminal --really-quiet --audio=no --vo=gpu --gpu-context=drm --loop-playlist=inf --image-display-duration="$IMAGE_DURATION" --playlist="$PLAYLIST_FILE" >> "$LOG_FILE" 2>&1
 `;
 
     const script = `#!/usr/bin/env bash
 set -euo pipefail
-ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
 PLAYER_ROOT=${shellEscape(RASP_ACTIVE_ROOT)}
-PID_FILE="$PLAYER_ROOT/player.pid"
 LOG_FILE="$PLAYER_ROOT/player.log"
 ACTIVE_RELEASE=${shellEscape(applyId)}
+PLAYER_SERVICE=show-player.service
 status() {
-  if [[ -f "$PID_FILE" ]]; then
-    local pid
-    pid=$(cat "$PID_FILE")
-    if kill -0 "$pid" >/dev/null 2>&1; then
-      echo "state=running release=$ACTIVE_RELEASE pid=$pid log=$LOG_FILE"
-      return 0
-    fi
-  fi
-  echo "state=stopped release=$ACTIVE_RELEASE pid= log=$LOG_FILE"
+  local state pid
+  state=$(systemctl is-active "$PLAYER_SERVICE" 2>/dev/null || true)
+  pid=$(systemctl show "$PLAYER_SERVICE" --property MainPID --value 2>/dev/null || true)
+  case "$state" in
+    active) echo "state=running release=$ACTIVE_RELEASE pid=$pid log=$LOG_FILE" ;;
+    failed) echo "state=error release=$ACTIVE_RELEASE pid= log=$LOG_FILE" ;;
+    *) echo "state=stopped release=$ACTIVE_RELEASE pid= log=$LOG_FILE" ;;
+  esac
 }
 stop() {
-  if [[ -f "$PID_FILE" ]]; then
-    local pid
-    pid=$(cat "$PID_FILE")
-    if kill -0 "$pid" >/dev/null 2>&1; then
-      kill "$pid"
-      sleep 1
-    fi
-    rm -f "$PID_FILE"
-  fi
+  sudo systemctl stop "$PLAYER_SERVICE"
   echo "stopped"
 }
 start() {
-  mkdir -p "$PLAYER_ROOT"
-  stop >/dev/null 2>&1 || true
-  "$ROOT_DIR/launch-player.sh"
+  sudo systemctl start "$PLAYER_SERVICE"
   sleep 2
   status
 }
 restart() {
-  stop
-  start
+  sudo systemctl restart "$PLAYER_SERVICE"
+  sleep 2
+  status
 }
 case "\${1:-status}" in
   start) start ;;
