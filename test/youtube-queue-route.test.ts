@@ -1,9 +1,30 @@
+import Database from "better-sqlite3";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../server/src/app";
 import { ShowStateStore } from "../server/src/services/show-state-store";
-import { YoutubeStore } from "../server/src/services/youtube-store";
+import { PIPPALOT_PLAYLIST_ID, YoutubeStore } from "../server/src/services/youtube-store";
 import { makeConfig, makeRemoteStatus, makeTempPaths } from "./test-helpers";
+
+function seedPippalot(dbFile: string, videoIds = ["GF3wagWwHjM", "Kdg4DLAPC4A", "NP0H491rRFU"]) {
+  const db = new Database(dbFile);
+  const now = new Date().toISOString();
+  const insertMedia = db.prepare(`
+    insert into youtube_media (id, source_id, url, kind, title, artist, album, channel, duration_ms, thumbnail_url, created_at, updated_at)
+    values (?, ?, ?, 'video', ?, null, null, 'Pippalot', null, null, ?, ?)
+  `);
+  const insertPlaylistItem = db.prepare("insert into youtube_playlist_items (id, playlist_id, media_item_id, position, added_at) values (?, ?, ?, ?, ?)");
+  const txn = db.transaction(() => {
+    db.prepare("insert into youtube_playlists (id, name, created_at, updated_at) values (?, 'Pippalot', ?, ?)").run(PIPPALOT_PLAYLIST_ID, now, now);
+    videoIds.forEach((videoId, index) => {
+      const mediaId = `pippalot-media-${index}`;
+      insertMedia.run(mediaId, videoId, `https://www.youtube.com/watch?v=${videoId}`, `Pippalot ${index + 1}`, now, now);
+      insertPlaylistItem.run(`pippalot-item-${index}`, PIPPALOT_PLAYLIST_ID, mediaId, index + 1, now);
+    });
+  });
+  txn();
+  db.close();
+}
 
 function playback() {
   return {
@@ -70,7 +91,7 @@ async function makeApp(searchResponse = {
     } as never,
     runtime: { applyInProgress: false },
   });
-  return { app, store, youtubeStore, getTicks: () => ticks, playbackActions };
+  return { app, store, youtubeStore, paths, getTicks: () => ticks, playbackActions };
 }
 
 describe("youtube queue route", () => {
@@ -188,6 +209,47 @@ describe("youtube queue route", () => {
     expect(trustedResponse.status).toBe(200);
     expect(trustedResponse.body.queue.items).toEqual([]);
     expect(playbackActions).toEqual(["pause"]);
+  });
+
+  it("replaces the queue from randomized cached Pippalot items", async () => {
+    const { app, youtubeStore, paths, getTicks } = await makeApp();
+    seedPippalot(paths.youtubeDbFile);
+    youtubeStore.addToQueue({ sourceId: "Tb0MC0jFv6M", url: "https://www.youtube.com/watch?v=Tb0MC0jFv6M" });
+    const orders = new Set<string>();
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const response = await request(app).post("/api/youtube-queue/pippalot").send({});
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ queued: 3 });
+      const videoIds = youtubeStore.getQueue().items.map((item) => item.videoId);
+      expect(new Set(videoIds)).toEqual(new Set(["GF3wagWwHjM", "Kdg4DLAPC4A", "NP0H491rRFU"]));
+      orders.add(videoIds.join(","));
+    }
+
+    expect(orders.size).toBeGreaterThan(1);
+    expect(getTicks()).toBe(12);
+  });
+
+  it("keeps Pippalot trusted-only", async () => {
+    const { app, youtubeStore, paths } = await makeApp();
+    seedPippalot(paths.youtubeDbFile);
+
+    const response = await request(app).post("/api/youtube-queue/pippalot").set("x-show-manager-access", "public").send({});
+
+    expect(response.status).toBe(403);
+    expect(youtubeStore.getQueue().items).toEqual([]);
+  });
+
+  it("preserves the queue when Pippalot is not cached", async () => {
+    const { app, youtubeStore, getTicks } = await makeApp();
+    youtubeStore.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+
+    const response = await request(app).post("/api/youtube-queue/pippalot").send({});
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain("not cached");
+    expect(youtubeStore.getQueue().items.map((item) => item.videoId)).toEqual(["GF3wagWwHjM"]);
+    expect(getTicks()).toBe(0);
   });
 
   it("loads confirmed videos as radio queue", async () => {

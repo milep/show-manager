@@ -135,6 +135,7 @@ Party features:
 - Pause, play, and skip from mobile UI.
 - Clear party queue from trusted UI.
 - Radio mode shuffles all confirmed videos into the queue.
+- Pippalot replaces the queue from its randomized SQLite playlist.
 - Pause persists across service restarts.
 
 Prerequisite:
@@ -213,6 +214,19 @@ Start confirmed-video radio:
 ```bash
 curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/radio
 ```
+
+Start Pippalot:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube-queue/pippalot
+```
+
+Pippalot uses the fixed `pippalot` playlist stored in SQLite.
+Each click shuffles the cached items.
+Each click replaces the transient party queue.
+Runtime playback never fetches the source playlist.
+The initial cache comes from the source playlist once.
+Future cache maintenance remains manual.
 
 List trusted saved playlists:
 

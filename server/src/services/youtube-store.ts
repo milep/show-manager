@@ -4,6 +4,9 @@ import type { YoutubeConfirmedVideoInput, YoutubeConfirmedVideosImportResponse, 
 import type { DataRootPaths } from "./data-root.js";
 
 const SOURCE = "youtube";
+export const PIPPALOT_PLAYLIST_ID = "pippalot";
+
+export class PippalotPlaylistError extends Error {}
 
 type MediaRow = {
   id: string;
@@ -63,6 +66,15 @@ type ConfirmedVideoRow = {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function shuffle<T>(items: T[]): T[] {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[target]] = [shuffled[target] as T, shuffled[index] as T];
+  }
+  return shuffled;
 }
 
 function mapMedia(row: MediaRow): YoutubeMediaItem {
@@ -373,6 +385,32 @@ export class YoutubeStore {
       .sort((left, right) => confidenceRank(left.confidence) - confidenceRank(right.confidence))
       .slice(0, 25)
       .map(mapConfirmedVideoSearchResult);
+  }
+
+  loadPippalotToQueue(): { queued: number } {
+    const playlist = this.db.prepare("select 1 from youtube_playlists where id = ?").get(PIPPALOT_PLAYLIST_ID);
+    if (!playlist) {
+      throw new PippalotPlaylistError("Pippalot playlist is not cached.");
+    }
+    const rows = this.db.prepare("select media_item_id from youtube_playlist_items where playlist_id = ? order by position asc").all(PIPPALOT_PLAYLIST_ID) as Array<{ media_item_id: string }>;
+    if (!rows.length) {
+      throw new PippalotPlaylistError("Pippalot playlist is empty.");
+    }
+    const shuffled = shuffle(rows);
+    const now = nowIso();
+    const insert = this.db.prepare(`
+      insert into youtube_party_queue_items (id, media_item_id, position, status, added_at, started_at, completed_at)
+      values (?, ?, ?, 'pending', ?, null, null)
+    `);
+    const txn = this.db.transaction(() => {
+      this.db.prepare("delete from youtube_party_queue_items").run();
+      shuffled.forEach((row, index) => {
+        insert.run(randomUUID(), row.media_item_id, index + 1, now);
+      });
+      this.touchQueue(now);
+    });
+    txn();
+    return { queued: shuffled.length };
   }
 
   loadConfirmedVideosToQueue(): { queued: number } {

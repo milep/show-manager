@@ -3,6 +3,7 @@ import { z } from "zod";
 import { youtubeConfirmedVideoInputSchema, type YoutubeQueueSnapshot } from "../../../shared/show-schema.js";
 import type { AppServices } from "../app.js";
 import { parseYoutubeLink, YoutubeLinkError } from "../services/youtube-link.js";
+import { PippalotPlaylistError } from "../services/youtube-store.js";
 
 const playlistSchema = z.object({
   name: z.string().min(1),
@@ -267,6 +268,22 @@ export function createYoutubeQueueRouter(services: AppServices) {
     if (!requireTrusted(request, response)) return;
     services.youtubeStore.deletePlaylist(request.params.id);
     response.status(204).send();
+  });
+
+  router.post("/api/youtube-queue/pippalot", async (request, response, next) => {
+    try {
+      if (!requireTrusted(request, response)) return;
+      services.youtubeQueueScheduler.resumeAutomation();
+      const result = services.youtubeStore.loadPippalotToQueue();
+      await services.youtubeQueueScheduler.tick();
+      response.json(result);
+    } catch (error) {
+      if (error instanceof PippalotPlaylistError) {
+        response.status(409).json({ error: error.message });
+        return;
+      }
+      next(error);
+    }
   });
 
   router.post("/api/youtube-queue/radio", async (request, response, next) => {

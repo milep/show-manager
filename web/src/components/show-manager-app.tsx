@@ -8,7 +8,7 @@ import { UploadPanel } from "@/components/upload-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { applyShow, clearYoutubeQueue, fetchShowManagerSnapshot, fetchStatus, saveShow, setQrDisplay, startYoutubeRadio, type ShowManagerSnapshot, uploadFile } from "@/lib/api";
+import { applyShow, clearYoutubeQueue, fetchShowManagerSnapshot, fetchStatus, saveShow, setQrDisplay, startPippalot, startYoutubeRadio, type ShowManagerSnapshot, uploadFile } from "@/lib/api";
 import { createPlaylistItemId } from "@/lib/playlist-item-id";
 
 type MobileSection = "controls" | "playlist" | "library";
@@ -25,8 +25,9 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
   const [qrBusy, setQrBusy] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [radioBusy, setRadioBusy] = useState(false);
+  const [pippalotBusy, setPippalotBusy] = useState(false);
   const [queueBusy, setQueueBusy] = useState(false);
-  const [radioMessage, setRadioMessage] = useState<string | null>(null);
+  const [partyMessage, setPartyMessage] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mobileSection, setMobileSection] = useState<MobileSection>("playlist");
@@ -134,25 +135,38 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
 
   async function handleRadio() {
     setRadioBusy(true);
-    setRadioMessage(null);
+    setPartyMessage(null);
     try {
       const result = await startYoutubeRadio();
-      setRadioMessage(`Radio queued ${result.queued} videos.`);
+      setPartyMessage(`Radio queued ${result.queued} videos.`);
     } catch (error) {
-      setRadioMessage(error instanceof Error ? error.message : "Radio failed.");
+      setPartyMessage(error instanceof Error ? error.message : "Radio failed.");
     } finally {
       setRadioBusy(false);
     }
   }
 
+  async function handlePippalot() {
+    setPippalotBusy(true);
+    setPartyMessage(null);
+    try {
+      const result = await startPippalot();
+      setPartyMessage(`Pippalot queued ${result.queued} videos.`);
+    } catch (error) {
+      setPartyMessage(error instanceof Error ? error.message : "Pippalot failed.");
+    } finally {
+      setPippalotBusy(false);
+    }
+  }
+
   async function handleClearQueue() {
     setQueueBusy(true);
-    setRadioMessage(null);
+    setPartyMessage(null);
     try {
       await clearYoutubeQueue();
-      setRadioMessage("Party list cleared.");
+      setPartyMessage("Party list cleared.");
     } catch (error) {
-      setRadioMessage(error instanceof Error ? error.message : "Clear failed.");
+      setPartyMessage(error instanceof Error ? error.message : "Clear failed.");
     } finally {
       setQueueBusy(false);
     }
@@ -182,6 +196,9 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
           <Button type="button" variant="secondary" onClick={() => void handleRadio()} disabled={radioBusy}>
             Radio
           </Button>
+          <Button type="button" variant="secondary" onClick={() => void handlePippalot()} disabled={pippalotBusy}>
+            Pippalot
+          </Button>
           <Button type="button" variant="outline" onClick={() => void handleClearQueue()} disabled={queueBusy}>
             Clear party list
           </Button>
@@ -191,7 +208,7 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
         </div>
       </div>
 
-      {radioMessage ? <Card><CardContent className="p-3 text-sm text-muted-foreground">{radioMessage}</CardContent></Card> : null}
+      {partyMessage ? <Card><CardContent className="p-3 text-sm text-muted-foreground">{partyMessage}</CardContent></Card> : null}
 
       <StatusCard status={status} saveState={saveState} saveError={saveError} qrDisplay={qrDisplay} qrBusy={qrBusy} qrError={qrError} onApply={handleApply} onToggleQrDisplay={handleToggleQrDisplay} />
 
