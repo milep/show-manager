@@ -231,6 +231,8 @@ sudo env PATH=/home/devops/.local/bin:/usr/local/bin:/usr/bin:/bin node scripts/
 
 The scraper uses `yt-dlp` first.
 For playlists where `yt-dlp` only returns part of the playlist, the scraper falls back to YouTube Data API when `YOUTUBE_DATA_API_KEY` is available.
+The API fallback follows every `nextPageToken`.
+This retrieves playlists exceeding the 50-item page limit.
 The importer is append-only.
 Existing video IDs are skipped.
 Confirmed videos appear first in search.
@@ -300,7 +302,42 @@ Important vars:
 - `SHOW_MANAGER_DATA_ROOT`
 - `SHOW_MANAGER_RASP_SSH_TARGET`
 - `SHOW_MANAGER_PUBLIC_BASE_URL`
-- `YOUTUBE_DATA_API_KEY` optional secret for YouTube Data API video search and playlist import fallback.
+- `YOUTUBE_DATA_API_KEY` optional secret for YouTube Data API video search and paginated playlist fetching.
+
+### YouTube Data API key
+
+Store the key outside the repository:
+
+```text
+/home/devops/secrets/dev/show-manager.secrets.env
+```
+
+Use dotenv syntax:
+
+```env
+YOUTUBE_DATA_API_KEY=your_api_key_here
+```
+
+The `show-manager` systemd unit loads this file automatically.
+Restart the service after changing the key:
+
+```bash
+./scripts/show-manager-restart.sh
+```
+
+The playlist scraper and backfill scripts first inspect their process environment.
+They next inspect the secrets file.
+They finally inspect the main development env file.
+Root-protected secret directories may block direct script access.
+Export the variable explicitly or run the script with suitable permissions in that case.
+Never commit the real key.
+
+The API key supports these features:
+
+- YouTube video search.
+- Complete playlist fetching through `playlistItems.list` pagination.
+- Confirmed-video metadata backfilling.
+- Playlist scraper fallback when `yt-dlp` returns incomplete results.
 
 Fixed local values stay in code:
 
