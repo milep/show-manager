@@ -75,6 +75,21 @@
 - Finish with full validation when practical.
 - Include a manual validation step when tests cannot cover runtime behavior.
 
+## Manual Pippalot Maintenance
+- Never schedule Pippalot synchronization.
+- Update Pippalot only when requested.
+- Run from the repository root:
+  - `sudo node scripts/pippalot-import-new.mjs`
+- The script fetches every source-playlist page.
+- The script appends only missing video IDs.
+- The script never removes cached items.
+- The script preserves manual additions.
+- The script creates a SQLite backup before writes.
+- Report `fetched`, `cachedBefore`, `added`, and `cachedAfter`.
+- Run the script twice during validation.
+- The second run must report `added: 0`.
+- Service restart is unnecessary.
+
 ## Testing
 - Prefer focused Vitest tests.
 - Use temporary data roots in tests.

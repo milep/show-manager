@@ -228,6 +228,23 @@ Runtime playback never fetches the source playlist.
 The initial cache comes from the source playlist once.
 Future cache maintenance remains manual.
 
+Append newly added source items manually:
+
+```bash
+sudo node scripts/pippalot-import-new.mjs
+```
+
+The script follows every playlist page.
+The script adds only missing video IDs.
+Existing cached items remain unchanged.
+Manual cache additions remain unchanged.
+Source deletions remain cached.
+The script creates a SQLite backup before writes.
+Run the script again after completion.
+A successful second run reports `added: 0`.
+No service restart is required.
+Never schedule this command.
+
 List trusted saved playlists:
 
 ```bash
