@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { youtubeConfirmedVideoInputSchema, type YoutubeQueueSnapshot } from "../../../shared/show-schema.js";
+import { pippalotAddRequestSchema, youtubeConfirmedVideoInputSchema, youtubeVideoIdSchema, type YoutubeQueueSnapshot } from "../../../shared/show-schema.js";
 import type { AppServices } from "../app.js";
 import { parseYoutubeLink, YoutubeLinkError } from "../services/youtube-link.js";
 import { PippalotPlaylistError } from "../services/youtube-store.js";
@@ -13,8 +13,6 @@ const loadPlaylistSchema = z.object({
   playlistId: z.string().min(1),
   mode: z.enum(["append", "replace"]).default("append"),
 });
-
-const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
 
 const confirmedVideosImportRequestSchema = z.object({
   items: z.array(z.unknown()).min(1),
@@ -84,7 +82,7 @@ function mediaInputFromBody(body: z.infer<typeof addSearchResultSchema>) {
   };
 }
 
-function handleQueueInputError(error: unknown, response: import("express").Response, next: import("express").NextFunction) {
+function handleYoutubeInputError(error: unknown, response: import("express").Response, next: import("express").NextFunction) {
   if (error instanceof z.ZodError || error instanceof YoutubeLinkError) {
     response.status(400).json({ error: error instanceof Error ? error.message : "Invalid YouTube queue item." });
     return;
@@ -110,7 +108,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
       await services.youtubeQueueScheduler.tick();
       response.status(201).json(await buildSnapshot(services));
     } catch (error) {
-      handleQueueInputError(error, response, next);
+      handleYoutubeInputError(error, response, next);
     }
   });
 
@@ -121,7 +119,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
       await services.youtubeQueueScheduler.tick();
       response.status(201).json(await buildSnapshot(services));
     } catch (error) {
-      handleQueueInputError(error, response, next);
+      handleYoutubeInputError(error, response, next);
     }
   });
 
@@ -268,6 +266,26 @@ export function createYoutubeQueueRouter(services: AppServices) {
     if (!requireTrusted(request, response)) return;
     services.youtubeStore.deletePlaylist(request.params.id);
     response.status(204).send();
+  });
+
+  router.post("/api/youtube/playlists/pippalot/items", (request, response, next) => {
+    try {
+      if (!requireTrusted(request, response)) return;
+      const body = pippalotAddRequestSchema.parse(request.body);
+      const parsed = parseYoutubeLink(body.url);
+      const result = services.youtubeStore.addToPippalot({
+        sourceId: parsed.videoId,
+        url: parsed.canonicalUrl,
+        kind: "video",
+      });
+      response.status(result.outcome === "added" ? 201 : 200).json(result);
+    } catch (error) {
+      if (error instanceof PippalotPlaylistError) {
+        response.status(409).json({ error: error.message });
+        return;
+      }
+      handleYoutubeInputError(error, response, next);
+    }
   });
 
   router.post("/api/youtube-queue/pippalot", async (request, response, next) => {

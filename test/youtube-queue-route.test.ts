@@ -240,6 +240,59 @@ describe("youtube queue route", () => {
     expect(youtubeStore.getQueue().items).toEqual([]);
   });
 
+  it("adds unique links to Pippalot without changing the party queue", async () => {
+    const { app, youtubeStore, paths, getTicks } = await makeApp();
+    seedPippalot(paths.youtubeDbFile);
+    youtubeStore.addToQueue({ sourceId: "Tb0MC0jFv6M", url: "https://www.youtube.com/watch?v=Tb0MC0jFv6M" });
+
+    const addedResponse = await request(app)
+      .post("/api/youtube/playlists/pippalot/items")
+      .send({ url: "https://youtu.be/Tb0MC0jFv6M?si=shared" });
+    const duplicateResponse = await request(app)
+      .post("/api/youtube/playlists/pippalot/items")
+      .send({ url: "https://music.youtube.com/watch?v=Tb0MC0jFv6M" });
+
+    const db = new Database(paths.youtubeDbFile);
+    const rows = db.prepare(`
+      select m.source_id, m.url
+      from youtube_playlist_items i
+      join youtube_media m on m.id = i.media_item_id
+      where i.playlist_id = ? and m.source_id = ?
+    `).all(PIPPALOT_PLAYLIST_ID, "Tb0MC0jFv6M") as Array<{ source_id: string; url: string }>;
+    db.close();
+
+    expect(addedResponse.status).toBe(201);
+    expect(addedResponse.body).toEqual({ outcome: "added", videoId: "Tb0MC0jFv6M" });
+    expect(duplicateResponse.status).toBe(200);
+    expect(duplicateResponse.body).toEqual({ outcome: "duplicate", videoId: "Tb0MC0jFv6M" });
+    expect(rows).toEqual([{ source_id: "Tb0MC0jFv6M", url: "https://www.youtube.com/watch?v=Tb0MC0jFv6M" }]);
+    expect(youtubeStore.getQueue().items.map((item) => item.videoId)).toEqual(["Tb0MC0jFv6M"]);
+    expect(getTicks()).toBe(0);
+  });
+
+  it("validates trusted Pippalot additions", async () => {
+    const { app, paths } = await makeApp();
+    seedPippalot(paths.youtubeDbFile);
+
+    const publicResponse = await request(app)
+      .post("/api/youtube/playlists/pippalot/items")
+      .set("x-show-manager-access", "public")
+      .send({ url: "https://youtu.be/Tb0MC0jFv6M" });
+    const invalidResponse = await request(app)
+      .post("/api/youtube/playlists/pippalot/items")
+      .send({ url: "https://example.com/watch?v=Tb0MC0jFv6M" });
+    const uncached = await makeApp();
+    const missingResponse = await request(uncached.app)
+      .post("/api/youtube/playlists/pippalot/items")
+      .send({ url: "https://youtu.be/Tb0MC0jFv6M" });
+
+    expect(publicResponse.status).toBe(403);
+    expect(invalidResponse.status).toBe(400);
+    expect(invalidResponse.body.error).toContain("YouTube link");
+    expect(missingResponse.status).toBe(409);
+    expect(missingResponse.body.error).toContain("not cached");
+  });
+
   it("preserves the queue when Pippalot is not cached", async () => {
     const { app, youtubeStore, getTicks } = await makeApp();
     youtubeStore.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });

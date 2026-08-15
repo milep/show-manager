@@ -1,4 +1,4 @@
-import type { AccessMode, ApiStatus, DraftShow, LibraryState, QrDisplayStatus, YoutubeQueueSnapshot, YoutubeSearchResponse, YoutubeSearchResult, YoutubeSearchSuggestionsResponse } from "../../../shared/show-schema";
+import type { AccessMode, ApiStatus, DraftShow, LibraryState, PippalotAddResponse, QrDisplayStatus, YoutubeQueueSnapshot, YoutubeSearchResponse, YoutubeSearchResult, YoutubeSearchSuggestionsResponse } from "../../../shared/show-schema";
 
 export type ShowManagerSnapshot = {
   library: LibraryState;
@@ -131,6 +131,14 @@ export function playYoutubePlayback() {
 
 export function startYoutubeRadio() {
   return expectJson<{ queued: number }>("/api/youtube-queue/radio", { method: "POST" });
+}
+
+export function addToPippalot(url: string) {
+  return expectJson<PippalotAddResponse>("/api/youtube/playlists/pippalot/items", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
 }
 
 export function startPippalot() {

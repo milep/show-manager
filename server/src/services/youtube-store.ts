@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
-import type { YoutubeConfirmedVideoInput, YoutubeConfirmedVideosImportResponse, YoutubeMediaItem, YoutubePlaybackStatus, YoutubePlaylist, YoutubeQueueItem, YoutubeQueueState, YoutubeSearchResult } from "../../../shared/show-schema.js";
+import type { PippalotAddResponse, YoutubeConfirmedVideoInput, YoutubeConfirmedVideosImportResponse, YoutubeMediaItem, YoutubePlaybackStatus, YoutubePlaylist, YoutubeQueueItem, YoutubeQueueState, YoutubeSearchResult } from "../../../shared/show-schema.js";
 import type { DataRootPaths } from "./data-root.js";
 
 const SOURCE = "youtube";
@@ -385,6 +385,36 @@ export class YoutubeStore {
       .sort((left, right) => confidenceRank(left.confidence) - confidenceRank(right.confidence))
       .slice(0, 25)
       .map(mapConfirmedVideoSearchResult);
+  }
+
+  addToPippalot(input: AddYoutubeMediaInput): PippalotAddResponse {
+    const append = this.db.transaction(() => {
+      const playlist = this.db.prepare("select 1 from youtube_playlists where id = ?").get(PIPPALOT_PLAYLIST_ID);
+      if (!playlist) {
+        throw new PippalotPlaylistError("Pippalot playlist is not cached.");
+      }
+      const duplicate = this.db.prepare(`
+        select 1
+        from youtube_playlist_items i
+        join youtube_media m on m.id = i.media_item_id
+        where i.playlist_id = ? and m.source_id = ?
+        limit 1
+      `).get(PIPPALOT_PLAYLIST_ID, input.sourceId);
+      if (duplicate) {
+        return { outcome: "duplicate" as const, videoId: input.sourceId };
+      }
+
+      const media = this.upsertMedia(input);
+      const row = this.db.prepare("select coalesce(max(position), 0) + 1 as position from youtube_playlist_items where playlist_id = ?").get(PIPPALOT_PLAYLIST_ID) as { position: number };
+      const now = nowIso();
+      this.db.prepare(`
+        insert into youtube_playlist_items (id, playlist_id, media_item_id, position, added_at)
+        values (?, ?, ?, ?, ?)
+      `).run(randomUUID(), PIPPALOT_PLAYLIST_ID, media.id, row.position, now);
+      this.db.prepare("update youtube_playlists set updated_at = ? where id = ?").run(now, PIPPALOT_PLAYLIST_ID);
+      return { outcome: "added" as const, videoId: input.sourceId };
+    });
+    return append();
   }
 
   loadPippalotToQueue(): { queued: number } {

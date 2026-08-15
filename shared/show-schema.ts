@@ -64,10 +64,12 @@ export const accessModeSchema = z.object({
 
 export const youtubeMediaKindSchema = z.enum(["video", "music", "unknown"]);
 
+export const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
+
 export const youtubeMediaItemSchema = z.object({
   id: z.string().min(1),
   source: z.literal("youtube"),
-  sourceId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
+  sourceId: youtubeVideoIdSchema,
   url: z.string().url(),
   kind: youtubeMediaKindSchema,
   title: z.string().min(1).nullable(),
@@ -89,7 +91,7 @@ export const youtubePlaylistSchema = z.object({
 
 export const youtubeSearchResultSchema = z.object({
   kind: z.enum(["song", "video"]),
-  videoId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
+  videoId: youtubeVideoIdSchema,
   title: z.string().min(1),
   artists: z.array(z.string().min(1)),
   album: z.string().min(1).nullable(),
@@ -100,7 +102,7 @@ export const youtubeSearchResultSchema = z.object({
 });
 
 export const youtubeConfirmedVideoInputSchema = z.object({
-  videoId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
+  videoId: youtubeVideoIdSchema,
   title: z.string().min(1).optional(),
   channel: z.string().min(1).optional(),
   channelId: z.string().min(1).optional(),
@@ -117,6 +119,15 @@ export const youtubeConfirmedVideosImportResponseSchema = z.object({
   invalid: z.number().int().nonnegative(),
 });
 
+export const pippalotAddRequestSchema = z.object({
+  url: z.string().trim().min(1),
+});
+
+export const pippalotAddResponseSchema = z.object({
+  outcome: z.enum(["added", "duplicate"]),
+  videoId: youtubeVideoIdSchema,
+});
+
 export const youtubeSearchResponseSchema = z.object({
   results: z.array(youtubeSearchResultSchema),
   warnings: z.array(z.string()),
@@ -129,7 +140,7 @@ export const youtubeSearchSuggestionsResponseSchema = z.object({
 export const youtubeQueueItemSchema = z.object({
   id: z.string().min(1),
   mediaItemId: z.string().min(1),
-  videoId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
+  videoId: youtubeVideoIdSchema,
   url: z.string().url(),
   title: z.string().min(1).nullable(),
   artist: z.string().min(1).nullable(),
@@ -197,6 +208,8 @@ export type YoutubePlaylist = z.infer<typeof youtubePlaylistSchema>;
 export type YoutubeSearchResult = z.infer<typeof youtubeSearchResultSchema>;
 export type YoutubeConfirmedVideoInput = z.infer<typeof youtubeConfirmedVideoInputSchema>;
 export type YoutubeConfirmedVideosImportResponse = z.infer<typeof youtubeConfirmedVideosImportResponseSchema>;
+export type PippalotAddRequest = z.infer<typeof pippalotAddRequestSchema>;
+export type PippalotAddResponse = z.infer<typeof pippalotAddResponseSchema>;
 export type YoutubeSearchResponse = z.infer<typeof youtubeSearchResponseSchema>;
 export type YoutubeSearchSuggestionsResponse = z.infer<typeof youtubeSearchSuggestionsResponseSchema>;
 export type YoutubeQueueItem = z.infer<typeof youtubeQueueItemSchema>;

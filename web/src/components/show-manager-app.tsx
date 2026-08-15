@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DraftShow } from "../../../shared/show-schema";
 import { MediaLibrary } from "@/components/media-library";
+import { PippalotAddForm } from "@/components/pippalot-add-form";
 import { PlaylistEditor } from "@/components/playlist-editor";
 import { ShowSettingsForm } from "@/components/show-settings-form";
 import { StatusCard } from "@/components/status-card";
@@ -207,6 +208,8 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
           </Button>
         </div>
       </div>
+
+      <PippalotAddForm />
 
       {partyMessage ? <Card><CardContent className="p-3 text-sm text-muted-foreground">{partyMessage}</CardContent></Card> : null}
 

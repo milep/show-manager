@@ -226,7 +226,19 @@ Each click shuffles the cached items.
 Each click replaces the transient party queue.
 Runtime playback never fetches the source playlist.
 The initial cache comes from the source playlist once.
-Future cache maintenance remains manual.
+Source-playlist synchronization remains manual.
+
+Save one YouTube link without changing the active queue:
+
+```bash
+curl -s -X POST http://127.0.0.1:4791/api/youtube/playlists/pippalot/items \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://youtu.be/GF3wagWwHjM"}'
+```
+
+The trusted root page exposes the same action near the top.
+Links normalize by YouTube video ID.
+Duplicate Pippalot items stay unchanged.
 
 Append newly added source items manually:
 
