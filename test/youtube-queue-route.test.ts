@@ -60,6 +60,9 @@ async function makeApp(searchResponse = {
     raspController: { status: async () => makeRemoteStatus() } as never,
     adbYoutubeController: {
       getPlaybackStatus: async () => playback(),
+      togglePower: async () => {
+        playbackActions.push("power");
+      },
       pause: async () => {
         playbackActions.push("pause");
       },
@@ -339,6 +342,18 @@ describe("youtube queue route", () => {
     const response = await request(app).post("/api/youtube/playlists").send({ name: "" });
 
     expect(response.status).toBe(400);
+  });
+
+  it("keeps TV power control trusted-only", async () => {
+    const { app, playbackActions } = await makeApp();
+
+    const publicResponse = await request(app).post("/api/tv/power-toggle").set("x-show-manager-access", "public").send({});
+    const trustedResponse = await request(app).post("/api/tv/power-toggle").send({});
+
+    expect(publicResponse.status).toBe(403);
+    expect(trustedResponse.status).toBe(200);
+    expect(trustedResponse.body).toEqual({ ok: true });
+    expect(playbackActions).toEqual(["power"]);
   });
 
   it("controls playback", async () => {

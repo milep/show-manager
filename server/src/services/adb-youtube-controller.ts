@@ -130,6 +130,11 @@ export class AdbYoutubeController {
     ]);
   }
 
+  async togglePower(): Promise<void> {
+    await this.connect();
+    await this.runRemoteAdb(["shell", "input", "keyevent", "KEYCODE_POWER"]);
+  }
+
   async pause(): Promise<void> {
     await this.connect();
     await this.runRemoteAdb(["shell", "input", "keyevent", "KEYCODE_MEDIA_PAUSE"]);

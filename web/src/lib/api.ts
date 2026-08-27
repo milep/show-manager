@@ -89,6 +89,12 @@ export function applyShow() {
   });
 }
 
+export function toggleTvPower() {
+  return expectJson<{ ok: true }>("/api/tv/power-toggle", {
+    method: "POST",
+  });
+}
+
 export function fetchYoutubeQueue() {
   return expectJson<YoutubeQueueSnapshot>("/api/youtube-queue");
 }

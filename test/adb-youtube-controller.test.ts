@@ -42,6 +42,21 @@ metadata: size=5, description=The Shadow Elite, Behemoth, The Shadow Elite`);
 });
 
 describe("AdbYoutubeController", () => {
+  it("toggles TV power through ssh adb", async () => {
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const controller = new AdbYoutubeController(makeConfig("/tmp/show-manager"), async (command, args) => {
+      calls.push({ command, args });
+      return { stdout: "", stderr: "" };
+    });
+
+    await controller.togglePower();
+
+    expect(calls).toEqual([
+      { command: "ssh", args: ["rasp", "adb 'connect' '192.168.1.104:5555'"] },
+      { command: "ssh", args: ["rasp", "adb 'shell' 'input' 'keyevent' 'KEYCODE_POWER'"] },
+    ]);
+  });
+
   it("starts videos through ssh adb", async () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const controller = new AdbYoutubeController(makeConfig("/tmp/show-manager"), async (command, args) => {

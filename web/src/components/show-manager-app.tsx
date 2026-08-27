@@ -9,7 +9,7 @@ import { UploadPanel } from "@/components/upload-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { applyShow, clearYoutubeQueue, fetchShowManagerSnapshot, fetchStatus, saveShow, setQrDisplay, startPippalot, startYoutubeRadio, type ShowManagerSnapshot, uploadFile } from "@/lib/api";
+import { applyShow, clearYoutubeQueue, fetchShowManagerSnapshot, fetchStatus, saveShow, setQrDisplay, startPippalot, startYoutubeRadio, toggleTvPower, type ShowManagerSnapshot, uploadFile } from "@/lib/api";
 import { createPlaylistItemId } from "@/lib/playlist-item-id";
 
 type MobileSection = "controls" | "playlist" | "library";
@@ -28,6 +28,7 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
   const [radioBusy, setRadioBusy] = useState(false);
   const [pippalotBusy, setPippalotBusy] = useState(false);
   const [queueBusy, setQueueBusy] = useState(false);
+  const [tvBusy, setTvBusy] = useState(false);
   const [partyMessage, setPartyMessage] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -173,6 +174,19 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
     }
   }
 
+  async function handleTvPower() {
+    setTvBusy(true);
+    setPartyMessage(null);
+    try {
+      await toggleTvPower();
+      setPartyMessage("TV power toggled.");
+    } catch (error) {
+      setPartyMessage(error instanceof Error ? error.message : "TV power command failed.");
+    } finally {
+      setTvBusy(false);
+    }
+  }
+
   function updateMobileSection(value: string) {
     if (value) {
       setMobileSection(value as MobileSection);
@@ -202,6 +216,9 @@ export function ShowManagerApp({ initialSnapshot }: ShowManagerAppProps) {
           </Button>
           <Button type="button" variant="outline" onClick={() => void handleClearQueue()} disabled={queueBusy}>
             Clear party list
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void handleTvPower()} disabled={tvBusy}>
+            TV on/off
           </Button>
           <Button asChild variant="outline">
             <a href="/playlist-manager">Playlist Manager</a>

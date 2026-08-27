@@ -14,6 +14,7 @@ import { createAuthApiRouter, createLoginRouter, requirePublicAuth } from "./rou
 import { createLibraryRouter } from "./routes/library.js";
 import { createShowRouter } from "./routes/show.js";
 import { createStatusRouter } from "./routes/status.js";
+import { createTvRouter } from "./routes/tv.js";
 import { createYoutubeQueueRouter } from "./routes/youtube-queue.js";
 import { YoutubeQueueScheduler } from "./services/youtube-queue-scheduler.js";
 import { YoutubeStore } from "./services/youtube-store.js";
@@ -45,6 +46,7 @@ export function createApp(services: AppServices): Express {
   app.use(createStatusRouter(services));
   app.use(createLibraryRouter(services));
   app.use(createShowRouter(services));
+  app.use(createTvRouter(services));
   app.use(createYoutubeQueueRouter(services));
   app.use(createApplyRouter(services));
 
