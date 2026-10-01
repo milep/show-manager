@@ -1,8 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { rm } from "node:fs/promises";
+import { afterEach, describe, expect, it } from "vitest";
 import type { YoutubePlaybackStatus } from "../shared/show-schema";
 import { YoutubeQueueScheduler } from "../server/src/services/youtube-queue-scheduler";
 import { YoutubeStore } from "../server/src/services/youtube-store";
-import { makeTempPaths } from "./test-helpers";
+import { makeTempPaths as makeFixturePaths } from "./test-helpers";
+
+const fixtures: Array<{ root: string; store: YoutubeStore }> = [];
+async function makeStore(): Promise<YoutubeStore> {
+  const paths = await makeFixturePaths();
+  const store = new YoutubeStore(paths);
+  fixtures.push({ root: paths.root, store });
+  return store;
+}
+afterEach(async () => {
+  for (const fixture of fixtures.splice(0)) {
+    fixture.store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
 
 function playback(overrides: Partial<YoutubePlaybackStatus> = {}): YoutubePlaybackStatus {
   return {
@@ -23,7 +38,7 @@ function playback(overrides: Partial<YoutubePlaybackStatus> = {}): YoutubePlayba
 
 describe("YoutubeQueueScheduler", () => {
   it("starts first queued item", async () => {
-    const store = new YoutubeStore(await makeTempPaths());
+    const store = await makeStore();
     store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
     const played: string[] = [];
     const scheduler = new YoutubeQueueScheduler(store, {
@@ -44,7 +59,7 @@ describe("YoutubeQueueScheduler", () => {
   });
 
   it("does not mark item playing when ADB launch fails", async () => {
-    const store = new YoutubeStore(await makeTempPaths());
+    const store = await makeStore();
     store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
     const scheduler = new YoutubeQueueScheduler(store, {
       getPlaybackStatus: async () => playback({ state: "idle" }),
@@ -62,7 +77,7 @@ describe("YoutubeQueueScheduler", () => {
   });
 
   it("does not advance while manually paused", async () => {
-    const store = new YoutubeStore(await makeTempPaths());
+    const store = await makeStore();
     store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
     store.addToQueue({ sourceId: "Kdg4DLAPC4A", url: "https://www.youtube.com/watch?v=Kdg4DLAPC4A" });
     const pending = store.firstPending();
@@ -75,7 +90,7 @@ describe("YoutubeQueueScheduler", () => {
         played.push(videoId);
       },
     } as never);
-    scheduler.pauseAutomation();
+    store.setAutomationPaused(true);
 
     await scheduler.tick();
 
@@ -86,7 +101,7 @@ describe("YoutubeQueueScheduler", () => {
   });
 
   it("keeps newly started item during startup grace", async () => {
-    const store = new YoutubeStore(await makeTempPaths());
+    const store = await makeStore();
     store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
     store.addToQueue({ sourceId: "Kdg4DLAPC4A", url: "https://www.youtube.com/watch?v=Kdg4DLAPC4A" });
     const pending = store.firstPending();

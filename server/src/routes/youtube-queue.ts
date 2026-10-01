@@ -104,8 +104,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
   router.post("/api/youtube-queue/items", async (request, response, next) => {
     try {
       const body = addSearchResultSchema.parse(request.body);
-      services.youtubeStore.addToQueue(mediaInputFromBody(body), "end");
-      await services.youtubeQueueScheduler.tick();
+      await services.youtubeQueueScheduler.addToQueue(mediaInputFromBody(body), "end");
       response.status(201).json(await buildSnapshot(services));
     } catch (error) {
       handleYoutubeInputError(error, response, next);
@@ -115,8 +114,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
   router.post("/api/youtube-queue/items/next", async (request, response, next) => {
     try {
       const body = addSearchResultSchema.parse(request.body);
-      services.youtubeStore.addToQueue(mediaInputFromBody(body), "next");
-      await services.youtubeQueueScheduler.tick();
+      await services.youtubeQueueScheduler.addToQueue(mediaInputFromBody(body), "next");
       response.status(201).json(await buildSnapshot(services));
     } catch (error) {
       handleYoutubeInputError(error, response, next);
@@ -125,7 +123,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
 
   router.delete("/api/youtube-queue/items/:id", async (request, response, next) => {
     try {
-      services.youtubeStore.removeQueueItem(request.params.id);
+      await services.youtubeQueueScheduler.removeQueueItem(request.params.id);
       response.json(await buildSnapshot(services));
     } catch (error) {
       next(error);
@@ -134,8 +132,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
 
   router.post("/api/youtube-playback/pause", async (_request, response, next) => {
     try {
-      await services.adbYoutubeController.pause();
-      services.youtubeQueueScheduler.pauseAutomation();
+      await services.youtubeQueueScheduler.control("pause");
       response.json(await buildSnapshot(services));
     } catch (error) {
       next(error);
@@ -144,8 +141,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
 
   router.post("/api/youtube-playback/play", async (_request, response, next) => {
     try {
-      services.youtubeQueueScheduler.resumeAutomation();
-      await services.adbYoutubeController.play();
+      await services.youtubeQueueScheduler.control("play");
       response.json(await buildSnapshot(services));
     } catch (error) {
       next(error);
@@ -154,9 +150,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
 
   router.post("/api/youtube-queue/skip", async (_request, response, next) => {
     try {
-      services.youtubeQueueScheduler.resumeAutomation();
-      services.youtubeStore.markCurrentCompleted();
-      await services.youtubeQueueScheduler.tick();
+      await services.youtubeQueueScheduler.control("next");
       response.json(await buildSnapshot(services));
     } catch (error) {
       next(error);
@@ -165,7 +159,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
 
   router.post("/api/youtube-queue/shuffle-rest", async (_request, response, next) => {
     try {
-      services.youtubeStore.shuffleRest();
+      await services.youtubeQueueScheduler.shuffleRest();
       response.json(await buildSnapshot(services));
     } catch (error) {
       next(error);
@@ -175,9 +169,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
   router.post("/api/youtube-queue/clear", async (request, response, next) => {
     try {
       if (!requireTrusted(request, response)) return;
-      services.youtubeQueueScheduler.resumeAutomation();
-      services.youtubeStore.clearQueue();
-      await services.adbYoutubeController.pause();
+      await services.youtubeQueueScheduler.clearQueue();
       response.json(await buildSnapshot(services));
     } catch (error) {
       next(error);
@@ -291,9 +283,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
   router.post("/api/youtube-queue/pippalot", async (request, response, next) => {
     try {
       if (!requireTrusted(request, response)) return;
-      services.youtubeQueueScheduler.resumeAutomation();
-      const result = services.youtubeStore.loadPippalotToQueue();
-      await services.youtubeQueueScheduler.tick();
+      const result = await services.youtubeQueueScheduler.loadPippalot();
       response.json(result);
     } catch (error) {
       if (error instanceof PippalotPlaylistError) {
@@ -307,9 +297,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
   router.post("/api/youtube-queue/radio", async (request, response, next) => {
     try {
       if (!requireTrusted(request, response)) return;
-      services.youtubeQueueScheduler.resumeAutomation();
-      const result = services.youtubeStore.loadConfirmedVideosToQueue();
-      await services.youtubeQueueScheduler.tick();
+      const result = await services.youtubeQueueScheduler.loadRadio();
       response.json(result);
     } catch (error) {
       next(error);
@@ -320,9 +308,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
     try {
       if (!requireTrusted(request, response)) return;
       const body = loadPlaylistSchema.parse(request.body);
-      services.youtubeQueueScheduler.resumeAutomation();
-      services.youtubeStore.loadPlaylistToQueue(body.playlistId, body.mode);
-      await services.youtubeQueueScheduler.tick();
+      await services.youtubeQueueScheduler.loadPlaylist(body.playlistId, body.mode);
       response.json(await buildSnapshot(services));
     } catch (error) {
       next(error);

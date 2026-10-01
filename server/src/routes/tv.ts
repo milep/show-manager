@@ -6,7 +6,7 @@ export function createTvRouter(services: AppServices) {
 
   router.post("/api/tv/power-toggle", async (_request, response, next) => {
     try {
-      await services.adbYoutubeController.togglePower();
+      await services.youtubeQueueScheduler.togglePower();
       response.json({ ok: true });
     } catch (error) {
       next(error);

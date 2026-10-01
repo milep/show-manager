@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AdbYoutubeController, parseYoutubePlaybackStatus } from "../server/src/services/adb-youtube-controller";
+import { AdbYoutubeController, boundedAdbSource, parseYoutubePlaybackStatus } from "../server/src/services/adb-youtube-controller";
 import { makeConfig } from "./test-helpers";
+import { tclPlayingState } from "./tcl-adb-fixtures";
+
+const remotePrefix = `python3 -c '${boundedAdbSource.replaceAll("'", `'"'"'`)}' adb `;
 
 const dumpsys = `
 Sessions Stack - have 3 sessions:
@@ -23,6 +26,25 @@ describe("parseYoutubePlaybackStatus", () => {
     expect(status.subtitle).toBe("Dimmu Borgir");
     expect(status.album).toBeNull();
     expect(status.positionMs).toBe(433);
+  });
+
+  it("parses the exact captured symbolic PLAYING state without losing position or detail", () => {
+    const status = parseYoutubePlaybackStatus(`package=com.google.android.youtube.tv\n${tclPlayingState}`);
+    expect(status.state).toBe("playing"); expect(status.positionMs).toBe(250);
+    expect(status.detail).toBe(tclPlayingState);
+  });
+
+  it.each([
+    ["3", "playing"], ["2", "paused"], ["1", "idle"], ["0", "idle"],
+    ["PLAYING(3)", "playing"], ["PAUSED(2)", "paused"], ["STOPPED(1)", "idle"],
+    ["NONE(0)", "idle"], ["BUFFERING(6)", "buffering"], ["ERROR(7)", "error"],
+    ["99", "unknown"], ["PAUSED(3)", "unknown"], ["INVALID(3)", "unknown"],
+    ["PLAYING(x)", "unknown"], ["PLAYING(3", "unknown"], ["3garbage", "unknown"],
+    ["3.5", "unknown"], ["-1", "unknown"], ["playing(3)", "unknown"],
+  ] as const)("%s playback token is %s", (token, expected) => {
+    const status = parseYoutubePlaybackStatus(`package=com.google.android.youtube.tv\nstate=PlaybackState {state=${token}, position=250, error=state=3}`);
+    expect(status.state).toBe(expected); expect(status.positionMs).toBe(250);
+    expect(status.connected).toBe(true);
   });
 
   it("parses YouTube Music album field", () => {
@@ -52,8 +74,8 @@ describe("AdbYoutubeController", () => {
     await controller.togglePower();
 
     expect(calls).toEqual([
-      { command: "ssh", args: ["rasp", "adb 'connect' '192.168.1.104:5555'"] },
-      { command: "ssh", args: ["rasp", "adb 'shell' 'input' 'keyevent' 'KEYCODE_POWER'"] },
+      { command: "ssh", args: ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "rasp", remotePrefix + "'connect' '192.168.1.104:5555'"] },
+      { command: "ssh", args: ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "rasp", remotePrefix + "'-s' '192.168.1.104:5555' 'shell' 'input' 'keyevent' 'KEYCODE_POWER'"] },
     ]);
   });
 
@@ -67,12 +89,12 @@ describe("AdbYoutubeController", () => {
     await controller.playVideo("GF3wagWwHjM");
 
     expect(calls).toEqual([
-      { command: "ssh", args: ["rasp", "adb 'connect' '192.168.1.104:5555'"] },
+      { command: "ssh", args: ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "rasp", remotePrefix + "'connect' '192.168.1.104:5555'"] },
       {
         command: "ssh",
         args: [
-          "rasp",
-          "adb 'shell' 'am' 'start' '-a' 'android.intent.action.VIEW' '-d' 'https://www.youtube.com/watch?v=GF3wagWwHjM'",
+          "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "rasp",
+          remotePrefix + "'-s' '192.168.1.104:5555' 'shell' 'am' 'start' '-a' 'android.intent.action.VIEW' '-d' 'https://www.youtube.com/watch?v=GF3wagWwHjM'",
         ],
       },
     ]);

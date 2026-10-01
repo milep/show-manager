@@ -1,10 +1,21 @@
 import Database from "better-sqlite3";
+import { rm } from "node:fs/promises";
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/src/app";
 import { ShowStateStore } from "../server/src/services/show-state-store";
+import { YoutubeQueueScheduler } from "../server/src/services/youtube-queue-scheduler";
+import type { AdbYoutubeController } from "../server/src/services/adb-youtube-controller";
 import { PIPPALOT_PLAYLIST_ID, YoutubeStore } from "../server/src/services/youtube-store";
 import { makeConfig, makeRemoteStatus, makeTempPaths } from "./test-helpers";
+
+const fixtures: Array<{ root: string; store: YoutubeStore }> = [];
+afterEach(async () => {
+  for (const fixture of fixtures.splice(0)) {
+    fixture.store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
 
 function seedPippalot(dbFile: string, videoIds = ["GF3wagWwHjM", "Kdg4DLAPC4A", "NP0H491rRFU"]) {
   const db = new Database(dbFile);
@@ -49,8 +60,18 @@ async function makeApp(searchResponse = {
   const paths = await makeTempPaths();
   const store = new ShowStateStore(paths);
   const youtubeStore = new YoutubeStore(paths);
+  fixtures.push({ root: paths.root, store: youtubeStore });
+  // These route fixtures count tick-triggered launches, using the real scheduler.
   let ticks = 0;
   const playbackActions: string[] = [];
+  const controller = {
+    getPlaybackStatus: async () => playback(),
+    playVideo: async () => { ticks += 1; },
+    togglePower: async () => { playbackActions.push("power"); },
+    pause: async () => { playbackActions.push("pause"); },
+    play: async () => { playbackActions.push("play"); },
+  } as unknown as AdbYoutubeController;
+  const scheduler = new YoutubeQueueScheduler(youtubeStore, controller);
   const app = createApp({
     config: makeConfig(paths.root),
     paths,
@@ -58,27 +79,8 @@ async function makeApp(searchResponse = {
     mediaStore: {} as never,
     bundleService: {} as never,
     raspController: { status: async () => makeRemoteStatus() } as never,
-    adbYoutubeController: {
-      getPlaybackStatus: async () => playback(),
-      togglePower: async () => {
-        playbackActions.push("power");
-      },
-      pause: async () => {
-        playbackActions.push("pause");
-      },
-      play: async () => {
-        playbackActions.push("play");
-      },
-    } as never,
-    youtubeQueueScheduler: {
-      status: () => ({ enabled: false, lastTickAt: null, lastError: null }),
-      getCachedPlaybackStatus: () => null,
-      tick: async () => {
-        ticks += 1;
-      },
-      pauseAutomation: () => undefined,
-      resumeAutomation: () => undefined,
-    } as never,
+    adbYoutubeController: controller,
+    youtubeQueueScheduler: scheduler,
     youtubeStore,
     youtubeSearchService: {
       suggestions: async (query: string) => ({ suggestions: [`${query} suggestion`] }),
@@ -94,7 +96,7 @@ async function makeApp(searchResponse = {
     } as never,
     runtime: { applyInProgress: false },
   });
-  return { app, store, youtubeStore, paths, getTicks: () => ticks, playbackActions };
+  return { app, store, youtubeStore, paths, getTicks: () => ticks, playbackActions, scheduler, controller };
 }
 
 describe("youtube queue route", () => {
