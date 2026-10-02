@@ -37,6 +37,35 @@ function playback(overrides: Partial<YoutubePlaybackStatus> = {}): YoutubePlayba
 }
 
 describe("YoutubeQueueScheduler", () => {
+  it("serializes edits behind playback launch and rechecks pending targets", async () => {
+    const store = await makeStore();
+    const input = { sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" };
+    for (let index = 0; index < 3; index += 1) store.addToQueue(input);
+    const [first, second, third] = store.getQueue().items;
+    if (!first || !second || !third) throw new Error("Expected queue.");
+    let releaseLaunch = () => {};
+    const launch = new Promise<void>((resolve) => { releaseLaunch = resolve; });
+    let notifyLaunch = () => {};
+    const launching = new Promise<void>((resolve) => { notifyLaunch = resolve; });
+    const scheduler = new YoutubeQueueScheduler(store, {
+      getPlaybackStatus: async () => playback(),
+      playVideo: async () => { notifyLaunch(); await launch; },
+    } as never);
+    const tick = scheduler.tick();
+    await launching;
+    const protectedMove = scheduler.moveQueueItem(first.id, "down");
+    const protectedRemove = scheduler.removeQueueItem(first.id);
+    const swap = scheduler.moveQueueItem(third.id, "up");
+    expect(store.getQueue().items).toEqual([first, second, third]);
+    releaseLaunch();
+    await Promise.all([tick, protectedMove, protectedRemove, swap]);
+    const queue = store.getQueue();
+    expect(queue.currentItemId).toBe(first.id);
+    expect(queue.items.map((item) => item.id)).toEqual([first.id, third.id, second.id]);
+    expect(queue.items[0]?.startedAt).not.toBeNull();
+    expect(queue.items.slice(1)).toEqual([third, second]);
+  });
+
   it("starts first queued item", async () => {
     const store = await makeStore();
     store.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });

@@ -137,6 +137,10 @@ export class YoutubeQueueScheduler {
     return this.serialize(() => { this.store.removeQueueItem(id); });
   }
 
+  moveQueueItem(id: string, direction: "up" | "down"): Promise<void> {
+    return this.serialize(() => { this.store.moveQueueItem(id, direction); });
+  }
+
   shuffleRest(): Promise<void> {
     return this.serialize(() => { this.store.shuffleRest(); });
   }

@@ -1,13 +1,14 @@
 import { PauseIcon, PlayIcon, SearchIcon, SkipForwardIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { YoutubeQueueSnapshot, YoutubeSearchResult } from "../../../shared/show-schema";
+import { UpcomingQueue, queueTitle } from "@/components/upcoming-queue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { addYoutubeQueueItem, addYoutubeQueueItemNext, fetchYoutubeQueue, fetchYoutubeSearchSuggestions, pauseYoutubePlayback, playYoutubePlayback, searchYoutube, skipYoutubeQueue } from "@/lib/api";
+import { addYoutubeQueueItem, addYoutubeQueueItemNext, fetchYoutubeQueue, fetchYoutubeSearchSuggestions, moveYoutubeQueueItem, removeYoutubeQueueItem, pauseYoutubePlayback, playYoutubePlayback, searchYoutube, skipYoutubeQueue } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type PlaylistManagerMockProps = {
@@ -119,10 +120,6 @@ function firstThumbnail(item: YoutubeSearchResult) {
   return item.thumbnails[0] ?? null;
 }
 
-function queueTitle(item: YoutubeQueueSnapshot["queue"]["items"][number]) {
-  return [item.artist ?? item.channel, item.title ?? item.videoId].filter(Boolean).join(" - ");
-}
-
 export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) {
   const [snapshot, setSnapshot] = useState<YoutubeQueueSnapshot | null>(null);
   const [query, setQuery] = useState("");
@@ -132,6 +129,9 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [error, setError] = useState<string | null>(null);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const queueEditingRef = useRef(false);
+  const queueRefreshTokenRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const suggestionsTokenRef = useRef(0);
 
@@ -157,13 +157,32 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
 
   const selectedResults = useMemo(() => results.filter((item) => selectedIds.has(item.videoId)), [results, selectedIds]);
   const nowPlaying = snapshot?.queue.items.find((item) => item.id === snapshot.queue.currentItemId) ?? null;
-  const upcomingItems = snapshot?.queue.items.filter((item) => item.id !== snapshot.queue.currentItemId) ?? [];
   async function refreshQueue(showErrors = true) {
+    if (queueEditingRef.current) return;
+    const token = ++queueRefreshTokenRef.current;
     try {
-      setSnapshot(await fetchYoutubeQueue());
+      const nextSnapshot = await fetchYoutubeQueue();
+      if (token !== queueRefreshTokenRef.current) return;
+      setSnapshot(nextSnapshot);
       if (showErrors) setError(null);
     } catch (caught) {
-      if (showErrors) setError(caught instanceof Error ? caught.message : "Queue refresh failed.");
+      if (token === queueRefreshTokenRef.current && showErrors) setError(caught instanceof Error ? caught.message : "Queue refresh failed.");
+    }
+  }
+
+  async function editQueue(id: string, direction?: "up" | "down") {
+    if (queueEditingRef.current) return;
+    queueEditingRef.current = true;
+    queueRefreshTokenRef.current += 1;
+    setQueueBusy(true);
+    setError(null);
+    try {
+      setSnapshot(direction ? await moveYoutubeQueueItem(id, direction) : await removeYoutubeQueueItem(id));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Queue edit failed.");
+    } finally {
+      queueEditingRef.current = false;
+      setQueueBusy(false);
     }
   }
 
@@ -378,15 +397,8 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
       <Card>
         <CardContent className="p-4">
           <div className="mb-3 text-sm text-muted-foreground">Upcoming</div>
-          {upcomingItems.length ? (
-            <ol className="flex list-decimal flex-col gap-2 pl-5">
-              {upcomingItems.map((item) => (
-                <li key={item.id} className="text-sm">
-                  <div className="font-medium">{queueTitle(item)}</div>
-                  {item.album ? <div className="text-xs text-muted-foreground">{item.album}</div> : null}
-                </li>
-              ))}
-            </ol>
+          {snapshot ? (
+            <UpcomingQueue queue={snapshot.queue} busy={queueBusy} onRemove={(id) => void editQueue(id)} onMove={(id, direction) => void editQueue(id, direction)} />
           ) : (
             <p className="text-sm text-muted-foreground">Queue is empty.</p>
           )}

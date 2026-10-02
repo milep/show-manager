@@ -132,11 +132,17 @@ Party features:
 - Add videos to the queue end.
 - Add one item next.
 - Multi-select results.
+- Remove or move Upcoming entries one position up/down in `/playlist-manager`.
 - Pause, play, and skip from mobile UI.
 - Clear party queue from trusted UI.
 - Radio mode shuffles all confirmed videos into the queue.
 - Pippalot replaces the queue from its randomized SQLite playlist.
 - Pause persists across service restarts.
+
+Upcoming edits save immediately to the party queue; there is no separate Save or Apply.
+Duplicate entries can be removed independently. Now Playing stays protected.
+Move swaps adjacent Upcoming entries; the first cannot move up and the last cannot move down.
+These edits never change source media, saved playlists, Pippalot order, or cached files.
 
 Prerequisite:
 

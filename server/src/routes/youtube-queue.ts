@@ -130,6 +130,16 @@ export function createYoutubeQueueRouter(services: AppServices) {
     }
   });
 
+  router.post("/api/youtube-queue/items/:id/move", async (request, response, next) => {
+    try {
+      const body = z.object({ direction: z.enum(["up", "down"]) }).parse(request.body);
+      await services.youtubeQueueScheduler.moveQueueItem(request.params.id, body.direction);
+      response.json(await buildSnapshot(services));
+    } catch (error) {
+      handleYoutubeInputError(error, response, next);
+    }
+  });
+
   router.post("/api/youtube-playback/pause", async (_request, response, next) => {
     try {
       await services.youtubeQueueScheduler.control("pause");

@@ -268,6 +268,23 @@ export class YoutubeStore {
     return this.getQueue();
   }
 
+  moveQueueItem(id: string, direction: "up" | "down"): YoutubeQueueState {
+    const move = this.db.transaction(() => {
+      const pending = this.db.prepare("select id, position from youtube_party_queue_items where status = 'pending' order by position asc").all() as Array<{ id: string; position: number }>;
+      const index = pending.findIndex((item) => item.id === id);
+      if (index === -1) return;
+      const item = pending[index];
+      const adjacent = pending[index + (direction === "up" ? -1 : 1)];
+      if (!item || !adjacent) return;
+      const update = this.db.prepare("update youtube_party_queue_items set position = ? where id = ?");
+      update.run(adjacent.position, item.id);
+      update.run(item.position, adjacent.id);
+      this.touchQueue(nowIso());
+    });
+    move();
+    return this.getQueue();
+  }
+
   shuffleRest(): YoutubeQueueState {
     const pending = this.db.prepare("select id from youtube_party_queue_items where status = 'pending' order by position asc").all() as Array<{ id: string }>;
     const shuffled = [...pending].sort(() => Math.random() - 0.5);

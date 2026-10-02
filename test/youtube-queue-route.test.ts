@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
-import { rm } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/src/app";
@@ -56,7 +57,7 @@ function playback() {
 async function makeApp(searchResponse = {
   results: [{ kind: "song", videoId: "GF3wagWwHjM", title: "teardrop", artists: ["Artist"], album: "Album", duration: "3:00", durationMs: 180000, thumbnails: [] }],
   warnings: [],
-}) {
+}, publicSessionValid = true) {
   const paths = await makeTempPaths();
   const store = new ShowStateStore(paths);
   const youtubeStore = new YoutubeStore(paths);
@@ -92,7 +93,7 @@ async function makeApp(searchResponse = {
     authService: {
       createSessionFromQrToken: async () => null,
       getQrStatus: async () => ({ active: false, publicUrl: null }),
-      isValidSession: async () => true,
+      isValidSession: async () => publicSessionValid,
     } as never,
     runtime: { applyInProgress: false },
   });
@@ -100,6 +101,122 @@ async function makeApp(searchResponse = {
 }
 
 describe("youtube queue route", () => {
+  it("edits only queue entries, preserves duplicates/settings, and persists adjacent swaps", async () => {
+    const { app, youtubeStore, paths, getTicks } = await makeApp();
+    seedPippalot(paths.youtubeDbFile);
+    youtubeStore.importConfirmedVideos([{ videoId: "GF3wagWwHjM", title: "Cached video" }]);
+    youtubeStore.loadPlaylistToQueue(PIPPALOT_PLAYLIST_ID);
+    youtubeStore.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+    const [playing, first, second, duplicate] = youtubeStore.getQueue().items;
+    if (!playing || !first || !second || !duplicate) throw new Error("Expected seeded queue.");
+    youtubeStore.markPlaying(playing.id);
+    const before = youtubeStore.getQueue();
+    const db = new Database(paths.youtubeDbFile);
+    const sourceTables = ["youtube_media", "youtube_playlists", "youtube_playlist_items", "youtube_confirmed_videos"];
+    const readSources = () => sourceTables.map((table) => db.prepare(`select * from ${table} order by id`).all());
+    const sourcesBefore = readSources();
+    const cachedFile = path.join(paths.root, "synthetic-cache.txt");
+    await writeFile(cachedFile, "synthetic cached media");
+    try {
+      for (const [id, direction] of [[first.id, "up"], [duplicate.id, "down"]]) {
+        const boundary = await request(app).post(`/api/youtube-queue/items/${id}/move`).send({ direction });
+        expect(boundary.status).toBe(200);
+        expect(boundary.body.queue).toEqual(before);
+      }
+      const up = await request(app).post(`/api/youtube-queue/items/${second.id}/move`).set("x-show-manager-access", "public").send({ direction: "up" });
+      expect(up.status).toBe(200);
+      expect(up.body.queue.items).toEqual([before.items[0], second, first, duplicate]);
+      expect(up.body.queue.currentItemId).toBe(playing.id);
+      const down = await request(app).post(`/api/youtube-queue/items/${second.id}/move`).send({ direction: "down" });
+      expect(down.body.queue.items).toEqual(before.items);
+      const removed = await request(app).delete(`/api/youtube-queue/items/${duplicate.id}`).set("x-show-manager-access", "public");
+      expect(removed.status).toBe(200);
+      expect(removed.body.queue.items).toEqual(before.items.slice(0, 3));
+      expect(removed.body.queue.currentItemId).toBe(playing.id);
+      expect(readSources()).toEqual(sourcesBefore);
+      expect(await readFile(cachedFile, "utf8")).toBe("synthetic cached media");
+      expect(getTicks()).toBe(0);
+      const reopened = new YoutubeStore(paths);
+      try {
+        expect(reopened.getQueue()).toEqual(removed.body.queue);
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it("ignores boundary, absent, playing and completed move targets", async () => {
+    const { app, youtubeStore, getTicks } = await makeApp();
+    const input = { sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" };
+    youtubeStore.addToQueue(input);
+    const completed = youtubeStore.firstPending();
+    if (!completed) throw new Error("Expected item.");
+    youtubeStore.markPlaying(completed.id);
+    youtubeStore.completeCurrent();
+    youtubeStore.addToQueue(input);
+    const playing = youtubeStore.firstPending();
+    if (!playing) throw new Error("Expected item.");
+    youtubeStore.markPlaying(playing.id);
+    youtubeStore.addToQueue(input);
+    const single = youtubeStore.getQueue().items.find((item) => item.id !== playing.id);
+    if (!single) throw new Error("Expected upcoming item.");
+    const before = youtubeStore.getQueue();
+    for (const id of [single.id, playing.id, completed.id, "missing"]) {
+      for (const direction of ["up", "down"]) {
+        const response = await request(app).post(`/api/youtube-queue/items/${id}/move`).send({ direction });
+        expect(response.status).toBe(200);
+        expect(response.body.queue).toEqual(before);
+      }
+    }
+    const protectedRemove = await request(app).delete(`/api/youtube-queue/items/${playing.id}`);
+    expect(protectedRemove.body.queue.items).toEqual(before.items);
+    expect(getTicks()).toBe(0);
+  });
+
+  it("rejects invalid move directions without changing a valid queue", async () => {
+    const { app, youtubeStore } = await makeApp();
+    youtubeStore.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+    youtubeStore.addToQueue({ sourceId: "Kdg4DLAPC4A", url: "https://www.youtube.com/watch?v=Kdg4DLAPC4A" });
+    const before = youtubeStore.getQueue();
+    for (const body of [{ direction: "sideways" }, { direction: 1 }, {}]) {
+      const response = await request(app).post(`/api/youtube-queue/items/${before.items[0]?.id}/move`).send(body);
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain("direction");
+      expect(youtubeStore.getQueue()).toEqual(before);
+    }
+  });
+
+  it("requires a QR session for public edits and does not expose source edits", async () => {
+    const { app, youtubeStore } = await makeApp(undefined, false);
+    youtubeStore.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+    const before = youtubeStore.getQueue();
+    const id = before.items[0]?.id;
+    const move = await request(app).post(`/api/youtube-queue/items/${id}/move`).set("x-show-manager-access", "public").send({ direction: "down" });
+    const remove = await request(app).delete(`/api/youtube-queue/items/${id}`).set("x-show-manager-access", "public");
+    expect(move.status).toBe(401);
+    expect(remove.status).toBe(401);
+    expect(youtubeStore.getQueue()).toEqual(before);
+    const authenticated = await makeApp();
+    const sourceMove = await request(authenticated.app).post("/api/youtube/playlists/pippalot/items/id/move").set("x-show-manager-access", "public").send({ direction: "up" });
+    const wrongMethod = await request(authenticated.app).put("/api/youtube-queue/items/id/move").set("x-show-manager-access", "public").send({ direction: "up" });
+    expect(sourceMove.status).toBe(403);
+    expect(wrongMethod.status).toBe(403);
+  });
+
+  it("removes the last upcoming entry and safely ignores moves in an empty queue", async () => {
+    const { app, youtubeStore } = await makeApp();
+    youtubeStore.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM" });
+    const id = youtubeStore.getQueue().items[0]?.id;
+    const removed = await request(app).delete(`/api/youtube-queue/items/${id}`);
+    expect(removed.status).toBe(200);
+    expect(removed.body.queue.items).toEqual([]);
+    const move = await request(app).post(`/api/youtube-queue/items/${id}/move`).send({ direction: "up" });
+    expect(move.status).toBe(200);
+    expect(move.body.queue.items).toEqual([]);
+  });
+
   it("appends youtube links", async () => {
     const { app, getTicks } = await makeApp();
 

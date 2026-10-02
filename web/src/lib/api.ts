@@ -123,6 +123,18 @@ export function addYoutubeQueueItemNext(item: YoutubeSearchResult) {
   });
 }
 
+export function removeYoutubeQueueItem(id: string) {
+  return expectJson<YoutubeQueueSnapshot>(`/api/youtube-queue/items/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function moveYoutubeQueueItem(id: string, direction: "up" | "down") {
+  return expectJson<YoutubeQueueSnapshot>(`/api/youtube-queue/items/${encodeURIComponent(id)}/move`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ direction }),
+  });
+}
+
 export function skipYoutubeQueue() {
   return expectJson<YoutubeQueueSnapshot>("/api/youtube-queue/skip", { method: "POST" });
 }

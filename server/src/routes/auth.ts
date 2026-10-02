@@ -34,7 +34,7 @@ const publicPostApis = new Set([
 
 function publicApiAllowed(method: string, path: string) {
   if (method === "GET") return publicGetApis.has(path);
-  if (method === "POST") return publicPostApis.has(path);
+  if (method === "POST") return publicPostApis.has(path) || /^\/api\/youtube-queue\/items\/[^/]+\/move$/.test(path);
   if (method === "DELETE") return /^\/api\/youtube-queue\/items\/[^/]+$/.test(path);
   return false;
 }
