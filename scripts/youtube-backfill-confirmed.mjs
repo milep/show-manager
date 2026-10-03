@@ -2,6 +2,8 @@
 import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
+import { YoutubeTitleService } from "../dist/server/src/services/youtube-title-service.js";
+import { ensureYoutubeTitleColumns, readYoutubeTitle, saveYoutubeTitle } from "../dist/server/src/services/youtube-title-storage.js";
 
 function usage() {
   console.error(`Usage: ${basename(process.argv[1])} [--db /path/youtube.sqlite] [--limit count]`);
@@ -56,6 +58,11 @@ if (!key) {
 }
 
 const db = new Database(dbFile);
+ensureYoutubeTitleColumns(db);
+const titles = new YoutubeTitleService({
+  getVideoTitle: (id) => readYoutubeTitle(db, id),
+  saveVideoTitle: (id, title, options) => saveYoutubeTitle(db, id, title, options),
+});
 const rows = db.prepare(`
   select video_id
   from youtube_confirmed_videos
@@ -66,7 +73,7 @@ const rows = db.prepare(`
 
 const update = db.prepare(`
   update youtube_confirmed_videos
-  set title = coalesce(?, title),
+  set title = coalesce(title, ?),
       channel = coalesce(?, channel),
       channel_id = coalesce(?, channel_id),
       thumbnail_url = coalesce(?, thumbnail_url),
@@ -84,6 +91,10 @@ for (const batch of chunks(rows, 50)) {
   const response = await fetch(url);
   const body = await response.json();
   if (!response.ok) throw new Error(body?.error?.message ?? `YouTube Data API failed with status ${response.status}`);
+  // Prepare outside the metadata write transaction; captured originals are immutable.
+  for (const item of body.items ?? []) {
+    await titles.prepare({ sourceId: item.id, url: `https://www.youtube.com/watch?v=${item.id}`, title: item.snippet?.title, kind: "video" });
+  }
   const found = new Set();
   const now = new Date().toISOString();
   const txn = db.transaction((items) => {

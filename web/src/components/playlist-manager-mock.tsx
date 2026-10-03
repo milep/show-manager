@@ -390,7 +390,7 @@ export function PlaylistManagerMock({ showBackLink }: PlaylistManagerMockProps) 
         <CardContent className="p-4">
           <div className="text-sm text-muted-foreground">Now playing</div>
           <div className="mt-1 text-xl font-semibold">{nowPlaying ? queueTitle(nowPlaying) : snapshot?.playback.title ?? "Nothing playing"}</div>
-          {snapshot?.playback.subtitle ? <div className="mt-1 text-sm text-muted-foreground">{snapshot.playback.subtitle}</div> : null}
+          {!nowPlaying && snapshot?.playback.subtitle ? <div className="mt-1 text-sm text-muted-foreground">{snapshot.playback.subtitle}</div> : null}
         </CardContent>
       </Card>
 

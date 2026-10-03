@@ -1,20 +1,22 @@
 import Database from "better-sqlite3";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { access, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import request from "supertest";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../server/src/app";
 import { ShowStateStore } from "../server/src/services/show-state-store";
 import { YoutubeQueueScheduler } from "../server/src/services/youtube-queue-scheduler";
 import type { AdbYoutubeController } from "../server/src/services/adb-youtube-controller";
 import { PIPPALOT_PLAYLIST_ID, YoutubeStore } from "../server/src/services/youtube-store";
 import { makeConfig, makeRemoteStatus, makeTempPaths } from "./test-helpers";
+import { YoutubeTitleService } from "../server/src/services/youtube-title-service";
 
 const fixtures: Array<{ root: string; store: YoutubeStore }> = [];
 afterEach(async () => {
   for (const fixture of fixtures.splice(0)) {
     fixture.store.close();
     await rm(fixture.root, { recursive: true, force: true });
+    await expect(access(fixture.root)).rejects.toMatchObject({ code: "ENOENT" });
   }
 });
 
@@ -57,7 +59,7 @@ function playback() {
 async function makeApp(searchResponse = {
   results: [{ kind: "song", videoId: "GF3wagWwHjM", title: "teardrop", artists: ["Artist"], album: "Album", duration: "3:00", durationMs: 180000, thumbnails: [] }],
   warnings: [],
-}, publicSessionValid = true) {
+}, publicSessionValid = true, titleFetch?: typeof fetch) {
   const paths = await makeTempPaths();
   const store = new ShowStateStore(paths);
   const youtubeStore = new YoutubeStore(paths);
@@ -73,6 +75,7 @@ async function makeApp(searchResponse = {
     play: async () => { playbackActions.push("play"); },
   } as unknown as AdbYoutubeController;
   const scheduler = new YoutubeQueueScheduler(youtubeStore, controller);
+  const titleService = new YoutubeTitleService(youtubeStore, titleFetch ?? (async () => { throw new Error("Synthetic metadata unavailable"); }), () => titleFetch ? "synthetic-route-key" : null);
   const app = createApp({
     config: makeConfig(paths.root),
     paths,
@@ -83,6 +86,7 @@ async function makeApp(searchResponse = {
     adbYoutubeController: controller,
     youtubeQueueScheduler: scheduler,
     youtubeStore,
+    youtubeTitleService: titleService,
     youtubeSearchService: {
       suggestions: async (query: string) => ({ suggestions: [`${query} suggestion`] }),
       search: async (query: string) => ({
@@ -97,10 +101,122 @@ async function makeApp(searchResponse = {
     } as never,
     runtime: { applyInProgress: false },
   });
-  return { app, store, youtubeStore, paths, getTicks: () => ticks, playbackActions, scheduler, controller };
+  return { app, store, youtubeStore, paths, getTicks: () => ticks, playbackActions, scheduler, controller, titleService };
 }
 
 describe("youtube queue route", () => {
+  it("prepares URL/video additions and future catalog/Pippalot imports, never provider calls on reads/loads/ticks", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (url) => String(url).includes("oembed")
+      ? Response.json({ title: "Label - Artist - Song (OFFICIAL VIDEO)" })
+      : Response.json({ choices: [{ message: { content: " Artist - Song " } }] }));
+    const f = await makeApp(undefined, true, fetchMock);
+    seedPippalot(f.paths.youtubeDbFile, []);
+    const url = await request(f.app).post("/api/youtube-queue/items").send({ url: "https://youtu.be/GF3wagWwHjM" });
+    expect(url.body.queue.items[0]).toMatchObject({ title: "Label - Artist - Song (OFFICIAL VIDEO)", displayTitle: "Artist - Song" });
+    const video = await request(f.app).post("/api/youtube-queue/items/next").send({ videoId: "Kdg4DLAPC4A", kind: "video", title: "Label - Artist - Song (OFFICIAL VIDEO)", artists: ["Label"] });
+    expect(video.status).toBe(201);
+    expect(video.body.queue.items[1]).toMatchObject({ displayTitle: "Artist - Song", channel: "Label" });
+    await request(f.app).post("/api/youtube/playlists/pippalot/items").send({ url: "https://youtu.be/NP0H491rRFU" });
+    await request(f.app).post("/api/youtube/confirmed-videos/import").send({ items: [{ videoId: "Tb0MC0jFv6M", title: "Label - Artist - Song (OFFICIAL VIDEO)" }] });
+    expect(f.youtubeStore.getVideoTitle("Tb0MC0jFv6M").displayTitle).toBe("Artist - Song");
+    const beforeDuplicates = fetchMock.mock.calls.length;
+    const repeated = await request(f.app).post("/api/youtube/confirmed-videos/import").send({ items: [
+      { videoId: "Tb0MC0jFv6M", title: "Replacement" },
+      { videoId: "aaaaaaaaaaa", title: "Raw new title" },
+      { videoId: "aaaaaaaaaaa", title: "Duplicate payload" },
+    ] });
+    expect(repeated.body).toEqual({ imported: 1, skippedExisting: 2, invalid: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(beforeDuplicates + 2);
+    const calls = fetchMock.mock.calls.length;
+    await request(f.app).get("/api/youtube-queue");
+    await request(f.app).get("/api/youtube/search?q=artist");
+    await request(f.app).get("/api/youtube/playlists");
+    await request(f.app).post("/api/youtube-queue/radio");
+    await request(f.app).post("/api/youtube-queue/pippalot");
+    await request(f.app).post("/api/youtube-queue/load-playlist").send({ playlistId: "pippalot" });
+    await f.scheduler.tick();
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
+    expect(f.youtubeStore.getQueue().items.every((item) => item.displayTitle === "Artist - Song")).toBe(true);
+    expect(JSON.stringify(url.body)).not.toContain("synthetic-route-key");
+  });
+
+  it.each(["url", "video", "catalog"] as const)("%s reuse of an uncleaned structured song formats stored artist/name without provider calls", async (addition) => {
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(new Error("No external calls permitted"));
+    const f = await makeApp(undefined, true, fetchMock);
+    f.youtubeStore.addToQueue({ sourceId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM", kind: "music", artist: "Artist feat. Guest", title: "Song (Live Remix)" });
+    f.youtubeStore.setAutomationPaused(true);
+    const before = f.youtubeStore.getQueue();
+    const response = addition === "catalog"
+      ? await request(f.app).post("/api/youtube/confirmed-videos/import").send({ items: [{ videoId: "GF3wagWwHjM", title: "Incoming catalog replacement" }] })
+      : await request(f.app).post("/api/youtube-queue/items").send(addition === "url"
+        ? { url: "https://youtu.be/GF3wagWwHjM" }
+        : { videoId: "GF3wagWwHjM", kind: "video", title: "Incoming video replacement" });
+    expect(response.status).toBe(201);
+    const displayTitle = "Artist feat. Guest - Song (Live Remix)";
+    expect(f.youtubeStore.getQueue().items[0]).toEqual({ ...before.items[0], displayTitle });
+    expect(f.youtubeStore.getVideoTitle("GF3wagWwHjM")).toMatchObject({ title: "Song (Live Remix)", displayTitle, kind: "music", artist: "Artist feat. Guest", requiresArtistSong: true });
+    if (addition === "catalog") {
+      expect(response.body).toEqual({ imported: 1, skippedExisting: 0, invalid: 0 });
+      const db = new Database(f.paths.youtubeDbFile);
+      try {
+        expect(db.prepare("select title, display_title from youtube_confirmed_videos").get()).toEqual({ title: "Incoming catalog replacement", display_title: displayTitle });
+      } finally { db.close(); }
+    } else {
+      expect(response.body.queue.items[1]).toMatchObject({ title: "Song (Live Remix)", displayTitle, artist: "Artist feat. Guest" });
+    }
+    expect(f.youtubeStore.isAutomationPaused()).toBe(true);
+    expect(f.getTicks()).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("future confirmed import keeps its own fuller original and rejects bare music output despite an existing bare success", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (url, options) => {
+      expect(String(url)).toContain("openrouter.ai");
+      expect(JSON.parse(String(options?.body)).messages[1].content).toBe("Rammstein - Angst (Official Video)");
+      return Response.json({ choices: [{ finish_reason: "stop", message: { content: "Angst" } }] });
+    });
+    const f = await makeApp(undefined, true, fetchMock);
+    f.youtubeStore.addToQueue({ sourceId: "ONj9cvHCado", url: "https://youtu.be/ONj9cvHCado", title: "Angst", displayTitle: "Angst", kind: "video", channel: "Rammstein" });
+    f.youtubeStore.setAutomationPaused(true);
+    const before = f.youtubeStore.getQueue();
+    const response = await request(f.app).post("/api/youtube/confirmed-videos/import").send({ items: [{ videoId: "ONj9cvHCado", title: "Rammstein - Angst (Official Video)" }] });
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ imported: 1, skippedExisting: 0, invalid: 0 });
+    expect(f.youtubeStore.getQueue()).toEqual(before);
+    expect(f.youtubeStore.getVideoTitle("ONj9cvHCado")).toMatchObject({ title: "Angst", sourceTitle: "Rammstein - Angst (Official Video)", needsCleanup: true, incompleteDisplay: true });
+    const db = new Database(f.paths.youtubeDbFile);
+    try {
+      expect(db.prepare("select title, display_title from youtube_confirmed_videos").get()).toEqual({ title: "Rammstein - Angst (Official Video)", display_title: null });
+    } finally { db.close(); }
+    await request(f.app).get("/api/youtube-queue");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(f.getTicks()).toBe(0);
+    expect(f.youtubeStore.isAutomationPaused()).toBe(true);
+  });
+
+  it("metadata/provider waits do not block serialized pause or hold SQLite write locks", async () => {
+    let release = () => {};
+    let entered = () => {};
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => {
+      entered(); await waiting;
+      return Response.json({ choices: [{ message: { content: "Artist - Song" } }] });
+    });
+    const f = await makeApp(undefined, true, fetchMock);
+    const addition = request(f.app).post("/api/youtube-queue/items").send({ videoId: "GF3wagWwHjM", kind: "video", title: "Raw title" }).then((response) => response);
+    await started;
+    try {
+      const pause = await request(f.app).post("/api/youtube-playback/pause");
+      expect(pause.status).toBe(200);
+      expect(f.playbackActions).toEqual(["pause"]);
+      const db = new Database(f.paths.youtubeDbFile);
+      try { db.prepare("insert into youtube_meta values ('synthetic-wait', 'unlocked')").run(); } finally { db.close(); }
+    } finally { release(); }
+    expect((await addition).status).toBe(201);
+    expect(f.youtubeStore.isAutomationPaused()).toBe(true);
+    expect(f.getTicks()).toBe(0);
+  });
   it("edits only queue entries, preserves duplicates/settings, and persists adjacent swaps", async () => {
     const { app, youtubeStore, paths, getTicks } = await makeApp();
     seedPippalot(paths.youtubeDbFile);

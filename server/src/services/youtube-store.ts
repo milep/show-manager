@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import type { PippalotAddResponse, YoutubeConfirmedVideoInput, YoutubeConfirmedVideosImportResponse, YoutubeMediaItem, YoutubePlaybackStatus, YoutubePlaylist, YoutubeQueueItem, YoutubeQueueState, YoutubeSearchResult } from "../../../shared/show-schema.js";
 import type { DataRootPaths } from "./data-root.js";
+import { ensureYoutubeTitleColumns, hasArtistSongParts, readYoutubeTitle, saveYoutubeTitle, type StoredYoutubeTitle, type StoredYoutubeTitleMetadata, type SaveYoutubeTitleOptions } from "./youtube-title-storage.js";
 
 const SOURCE = "youtube";
 export const PIPPALOT_PLAYLIST_ID = "pippalot";
@@ -14,6 +15,7 @@ type MediaRow = {
   url: string;
   kind: YoutubeMediaItem["kind"];
   title: string | null;
+  display_title: string | null;
   artist: string | null;
   album: string | null;
   channel: string | null;
@@ -35,6 +37,7 @@ type QueueRow = {
   url: string;
   kind: YoutubeMediaItem["kind"];
   title: string | null;
+  display_title: string | null;
   artist: string | null;
   album: string | null;
   channel: string | null;
@@ -53,6 +56,7 @@ type ConfirmedVideoRow = {
   id: string;
   video_id: string;
   title: string | null;
+  display_title: string | null;
   channel: string | null;
   channel_id: string | null;
   duration_ms: number | null;
@@ -85,6 +89,7 @@ function mapMedia(row: MediaRow): YoutubeMediaItem {
     url: row.url,
     kind: row.kind,
     title: row.title,
+    displayTitle: row.display_title,
     artist: row.artist,
     album: row.album,
     channel: row.channel,
@@ -153,6 +158,7 @@ function mapQueueItem(row: QueueRow): YoutubeQueueItem {
     videoId: row.source_id,
     url: row.url,
     title: queueTitle(row),
+    displayTitle: row.display_title,
     artist: row.artist,
     album: row.album,
     channel: row.channel,
@@ -167,6 +173,7 @@ export type AddYoutubeMediaInput = {
   sourceId: string;
   url: string;
   title?: string | null;
+  displayTitle?: string | null;
   artist?: string | null;
   album?: string | null;
   channel?: string | null;
@@ -189,9 +196,21 @@ export class YoutubeStore {
     this.db.close();
   }
 
+  getVideoTitle(videoId: string): StoredYoutubeTitleMetadata {
+    return readYoutubeTitle(this.db, videoId);
+  }
+
+  saveVideoTitle(videoId: string, value: StoredYoutubeTitle, options: SaveYoutubeTitleOptions = {}): void {
+    saveYoutubeTitle(this.db, videoId, value, options);
+  }
+
+  hasConfirmedVideo(videoId: string): boolean {
+    return Boolean(this.db.prepare("select 1 from youtube_confirmed_videos where video_id = ?").get(videoId));
+  }
+
   getQueue(): YoutubeQueueState {
     const rows = this.db.prepare(`
-      select q.*, m.source_id, m.url, m.kind, m.title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
+      select q.*, m.source_id, m.url, m.kind, m.title, m.display_title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
       from youtube_party_queue_items q
       join youtube_media m on m.id = q.media_item_id
       where q.status in ('pending', 'playing')
@@ -208,7 +227,7 @@ export class YoutubeStore {
 
   listCompletedQueueItems(): YoutubeQueueItem[] {
     const rows = this.db.prepare(`
-      select q.*, m.source_id, m.url, m.kind, m.title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
+      select q.*, m.source_id, m.url, m.kind, m.title, m.display_title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
       from youtube_party_queue_items q
       join youtube_media m on m.id = q.media_item_id
       where q.status in ('completed', 'skipped', 'failed')
@@ -301,7 +320,7 @@ export class YoutubeStore {
 
   firstPending(): YoutubeQueueItem | null {
     const row = this.db.prepare(`
-      select q.*, m.source_id, m.url, m.kind, m.title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
+      select q.*, m.source_id, m.url, m.kind, m.title, m.display_title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
       from youtube_party_queue_items q
       join youtube_media m on m.id = q.media_item_id
       where q.status = 'pending'
@@ -335,19 +354,10 @@ export class YoutubeStore {
     if (!current) return;
     const media = this.db.prepare("select * from youtube_media where id = ?").get(current.media_item_id) as MediaRow | undefined;
     if (!media) return;
-    const title = playback.title ?? media.title;
-    const album = playback.album ?? media.album;
-    const artist = playback.album ? playback.subtitle : media.artist;
-    const channel = playback.album ? media.channel : playback.subtitle ?? media.channel;
-    const kind = playback.album ? "music" : playback.subtitle ? "video" : media.kind;
-    const now = nowIso();
-    if (title === media.title && artist === media.artist && album === media.album && channel === media.channel && kind === media.kind) return;
+    // TV observations are not source metadata and must never replace captured titles.
     this.db.prepare(`
-      update youtube_media
-      set title = ?, artist = ?, album = ?, channel = ?, kind = ?, updated_at = ?
-      where id = ?
-    `).run(title, artist, album, channel, kind, now, media.id);
-    this.touchQueue(now);
+      update youtube_media set playback_title = ?, playback_subtitle = ?, playback_album = ? where id = ?
+    `).run(playback.title, playback.subtitle, playback.album, media.id);
   }
 
   currentStartedAt(): string | null {
@@ -371,12 +381,12 @@ export class YoutubeStore {
     this.db.prepare("delete from youtube_playlists where id = ?").run(id);
   }
 
-  importConfirmedVideos(items: YoutubeConfirmedVideoInput[]): YoutubeConfirmedVideosImportResponse {
+  importConfirmedVideos(items: Array<YoutubeConfirmedVideoInput & { displayTitle?: string | null }>): YoutubeConfirmedVideosImportResponse {
     const now = nowIso();
     const existing = this.db.prepare("select 1 from youtube_confirmed_videos where video_id = ? limit 1");
     const insert = this.db.prepare(`
-      insert into youtube_confirmed_videos (id, video_id, title, channel, channel_id, duration_ms, thumbnail_url, source, confidence, notes, created_at, updated_at)
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      insert into youtube_confirmed_videos (id, video_id, title, display_title, channel, channel_id, duration_ms, thumbnail_url, source, confidence, notes, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = { imported: 0, skippedExisting: 0, invalid: 0 };
     const txn = this.db.transaction(() => {
@@ -385,7 +395,10 @@ export class YoutubeStore {
           result.skippedExisting += 1;
           continue;
         }
-        insert.run(randomUUID(), item.videoId, item.title ?? null, item.channel ?? null, item.channelId ?? null, item.durationMs ?? null, item.thumbnailUrl ?? null, item.source ?? null, item.confidence ?? null, item.notes ?? null, now, now);
+        const stored = this.getVideoTitle(item.videoId);
+        const requiresArtistSong = hasArtistSongParts(item.title) || stored.requiresArtistSong;
+        const displayTitle = [stored.displayTitle, item.displayTitle].find((value) => value?.trim() && (!requiresArtistSong || hasArtistSongParts(value))) ?? null;
+        insert.run(randomUUID(), item.videoId, item.title ?? stored.title, displayTitle, item.channel ?? null, item.channelId ?? null, item.durationMs ?? null, item.thumbnailUrl ?? null, item.source ?? null, item.confidence ?? null, item.notes ?? null, now, now);
         result.imported += 1;
       }
     });
@@ -479,6 +492,7 @@ export class YoutubeStore {
           sourceId: row.video_id,
           url: `https://www.youtube.com/watch?v=${row.video_id}`,
           title: row.title,
+          displayTitle: row.display_title,
           channel: row.channel,
           durationMs: row.duration_ms,
           thumbnailUrl: row.thumbnail_url,
@@ -515,14 +529,16 @@ export class YoutubeStore {
   }
 
   private upsertMedia(input: AddYoutubeMediaInput): YoutubeMediaItem {
+    const stored = this.getVideoTitle(input.sourceId);
+    input = { ...input, title: stored.title ?? input.title ?? null, displayTitle: stored.displayTitle ?? input.displayTitle ?? null };
     const existing = this.db.prepare("select * from youtube_media where source_id = ?").get(input.sourceId) as MediaRow | undefined;
     const now = nowIso();
     if (existing) {
       this.db.prepare(`
         update youtube_media
-        set url = ?, title = coalesce(?, title), artist = coalesce(?, artist), album = coalesce(?, album), channel = coalesce(?, channel), duration_ms = coalesce(?, duration_ms), thumbnail_url = coalesce(?, thumbnail_url), kind = ?, updated_at = ?
+        set url = ?, title = coalesce(title, ?), display_title = coalesce(display_title, ?), artist = coalesce(?, artist), album = coalesce(?, album), channel = coalesce(?, channel), duration_ms = coalesce(?, duration_ms), thumbnail_url = coalesce(?, thumbnail_url), kind = ?, updated_at = ?
         where id = ?
-      `).run(input.url, input.title ?? null, input.artist ?? null, input.album ?? null, input.channel ?? null, input.durationMs ?? null, input.thumbnailUrl ?? null, input.kind ?? existing.kind, now, existing.id);
+      `).run(input.url, input.title ?? null, input.displayTitle ?? null, input.artist ?? null, input.album ?? null, input.channel ?? null, input.durationMs ?? null, input.thumbnailUrl ?? null, input.kind ?? existing.kind, now, existing.id);
       const updated = this.db.prepare("select * from youtube_media where id = ?").get(existing.id) as MediaRow;
       return mapMedia(updated);
     }
@@ -532,6 +548,7 @@ export class YoutubeStore {
       url: input.url,
       kind: input.kind ?? "unknown",
       title: input.title ?? null,
+      display_title: input.displayTitle ?? null,
       artist: input.artist ?? null,
       album: input.album ?? null,
       channel: input.channel ?? null,
@@ -541,9 +558,9 @@ export class YoutubeStore {
       updated_at: now,
     };
     this.db.prepare(`
-      insert into youtube_media (id, source_id, url, kind, title, artist, album, channel, duration_ms, thumbnail_url, created_at, updated_at)
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(row.id, row.source_id, row.url, row.kind, row.title, row.artist, row.album, row.channel, row.duration_ms, row.thumbnail_url, row.created_at, row.updated_at);
+      insert into youtube_media (id, source_id, url, kind, title, display_title, artist, album, channel, duration_ms, thumbnail_url, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(row.id, row.source_id, row.url, row.kind, row.title, row.display_title, row.artist, row.album, row.channel, row.duration_ms, row.thumbnail_url, row.created_at, row.updated_at);
     return mapMedia(row);
   }
 
@@ -559,7 +576,7 @@ export class YoutubeStore {
 
   private currentQueueRow(): QueueRow | null {
     const row = this.db.prepare(`
-      select q.*, m.source_id, m.url, m.kind, m.title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
+      select q.*, m.source_id, m.url, m.kind, m.title, m.display_title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
       from youtube_party_queue_items q
       join youtube_media m on m.id = q.media_item_id
       where q.status = 'playing'
@@ -570,7 +587,7 @@ export class YoutubeStore {
 
   private queueRowById(id: string): QueueRow | null {
     const row = this.db.prepare(`
-      select q.*, m.source_id, m.url, m.kind, m.title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
+      select q.*, m.source_id, m.url, m.kind, m.title, m.display_title, m.artist, m.album, m.channel, m.duration_ms, m.thumbnail_url
       from youtube_party_queue_items q
       join youtube_media m on m.id = q.media_item_id
       where q.id = ?
@@ -654,5 +671,6 @@ export class YoutubeStore {
       create index if not exists youtube_party_queue_position_idx on youtube_party_queue_items(position);
       create index if not exists youtube_party_queue_status_idx on youtube_party_queue_items(status);
     `);
+    ensureYoutubeTitleColumns(this.db);
   }
 }

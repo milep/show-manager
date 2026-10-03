@@ -287,6 +287,56 @@ Existing video IDs are skipped.
 Confirmed videos appear first in search.
 Use the backfill script to add thumbnails and channel metadata.
 
+### Original and display song titles
+
+SQLite `title` remains the captured source title. Nullable `display_title` stores a successful cleanup separately in both media and the full confirmed-video catalog.
+A small additive column upgrade also keeps TV-observed title/subtitle/album separate; playback cannot overwrite captured source metadata.
+Historical source titles already overwritten by older versions cannot be recovered.
+Upcoming and managed Now Playing use the display title directly. Without one, they use real structured artist/name metadata when available, then the original title, then the video ID. Artist prefixes are not repeated; channels/record labels are never mechanically prepended.
+Unmanaged Now Playing retains the raw TV title; it never triggers cleanup.
+
+New URL additions retrieve a missing source title through YouTube oEmbed.
+Preparation keeps the captured original baseline separate from richer same-video context. It uses a fuller stored media/confirmed-catalog title (or supplied source title) before oEmbed. If a bare title still lacks structured artist/name context, it retrieves the canonical YouTube title as model input. A separator check triggers context retrieval only; it is not a music classifier. Channel names are never assumed to be artists. If canonical lookup fails, the original stays usable without asking the model to guess an artist from the bare song name.
+Structured YouTube Music songs format artist/name directly without AI, including URL/video/import reuse of stored uncleaned music rows.
+Video additions and future manual imports use OpenRouter `~z-ai/glm-flash-latest` (the canonical API alias for Z.ai: GLM Flash Latest) with a short, low-temperature request and `reasoning: { enabled: false }` so reasoning does not consume the existing 160-token output budget, preserving non-music titles and meaningful live/remix/featured-artist qualifiers by prompt.
+Absent credentials, HTTP/network/parse/empty-output failures and explicitly incomplete/failed completions silently leave the original usable (or allow a title-less URL).
+A nonempty completion marked `length` is not saved as a successful display title; a later explicit preparation or cleanup can try again.
+Complete results are reused by video ID, including complete displays in sibling catalog rows. With real structured artist/name, stored `kind='music'` plus a full artist-bearing source title (even without a separate artist or catalog), or confirmed source artist/title context, a saved bare music display is incomplete: normal preparation/cleanup repairs it and rejects provider outputs missing either component. Missing/invalid results retain the original/previous display and remain eligible for a later explicit batch; there are no retries or background queues.
+Reads, search enumeration, startup, TV polling, radio and saved-playlist loading never call OpenRouter.
+Metadata waits occur before scheduler ordering and outside SQLite transactions.
+
+Set `OPENROUTER_API_KEY` in the server process environment, or use `$HOME/.config/secrets/openrouter.env` with `OPENROUTER_API_KEY=...` (optional `export` and quotes).
+The exported environment takes precedence, including an explicitly empty value.
+The fallback is server-only, is not shell-sourced, and requires no service/config/permission changes.
+Never commit credentials. No key is returned by the API or included in the browser bundle.
+
+After reviewed-code acceptance, clean existing unique video IDs across media and the **full** confirmed catalog in explicit bounded batches:
+
+```bash
+npm run build:server
+node scripts/youtube-cleanup-titles.mjs --db /home/devops/data/dev/show-manager/state/youtube.sqlite --limit 25
+```
+
+The default batch is 25 IDs; `--limit` accepts 1–100. Normal selection skips complete displays and unchanged nonmusic successes, but includes missing sibling displays and known incomplete music displays supported by structured artist/name, stored music kind plus full source context, or fuller confirmed source context. It prioritizes Now Playing then Upcoming queue order, then other media/catalog IDs. Each new invocation selects the next eligible batch (previous failures are eligible again); there is no automatic loop or retry.
+For another explicitly known poor display without stored music/artist context (for example `Residue`, with only a channel and bare saved title), use bounded refresh to retrieve canonical metadata. A channel alone never opts an arbitrary saved nonmusic video into paid reprocessing:
+
+```bash
+node scripts/youtube-cleanup-titles.mjs --db /home/devops/data/dev/show-manager/state/youtube.sqlite --limit 1 --refresh 2fALV3X9jB4
+```
+
+Repeat `--refresh VIDEO_ID` for additional targets, within the batch limit. This mode processes only requested existing IDs. A successful new result replaces their displays in media/catalog while preserving originals; lookup/provider/truncation failure retains the previous display. Normal repairs replace only incomplete/missing fields, preserving other complete displays, including a complete display saved concurrently during the request. Unknown nonmusic successes are not reprocessed by normal batches.
+This is paid, sequential work when a key is available, with bounded per-request timeouts (8 seconds for metadata, 10 for OpenRouter). Source enrichment supplies canonical artist context without replacing historical baseline titles; structured songs remain local/no AI.
+Counter-only JSON progress appears before work, after the first completed ID, every five IDs and at the batch end. No title/provider payloads or credentials appear in command stdout. The final summary reports `selected`, `processed`, `cleaned` (including local formatting/display propagation), `refreshed` (successful replacement of existing incomplete displays or explicit targets), `skippedSuccessful` (concurrent successes), `fetchedMissing`, `failed`, `notFound` (missing targets) and `interrupted`.
+SIGINT/SIGTERM abort an in-flight request and produce an interrupted partial summary with exit code 130. Each completed ID is already committed; normal reruns skip those successes. A hard kill may prevent a final summary, but completed writes remain. SQLite transactions never span HTTP waits.
+Entry IDs, memberships, order, statuses, timestamps, current playback and persisted pause stay unchanged. No preview, staged apply, extra backup, scheduler job or service restart is part of cleanup.
+The bounded/progress/context follow-up passed review and validation. The first targeted live batch cleaned all four reported missing-artist examples, with one prior display replaced and no failures. After an authorized service restart, the next normal batch processed 25 IDs: 20 cleaned and 5 left usable after failures. Full catalog cleanup is not complete; there is no automatic loop. A later targeted run saved `PAIN - Same Old Song`. After a correctly rejected truncated Behemoth response, the fixed non-reasoning request passed review and validation; a one-item live rerun saved `BEHEMOTH - Blow Your Trumpets Gabriel` without changing its stored original. The CLI and backend use the fixed request; an authorized service restart activated the non-reasoning setting on 2026-10-02. See the plan for current live status.
+Supervisor compatibility evidence on 2026-10-02: the public model listing identified `~z-ai/glm-flash-latest`, and one authenticated smoke request returned HTTP 200, `finish_reason: stop`, and `MARDUK - Shovel Beats Sceptre`. This was a single title request, not an existing-data cleanup; the worker made no live calls. See `plans/youtube-song-title-cleanup.md` for the attributed evidence.
+
+The direct Pippalot sync and confirmed metadata backfill scripts also use the built title service; run `npm run build:server` before them.
+Pippalot sync remains manual-only, append-only and retains its existing pre-write backup and second-run `added: 0` validation.
+Confirmed API/JSONL imports clean new entries before insertion, retain their own supplied original title even when the media original differs, and continue skipping existing catalog IDs.
+The stored-context/normal-repair follow-up and music-kind guard correction passed review and validation. The supervisor completed the current queue in bounded passes, including Residue and source-based repairs for three failed items. Final database and live API checks found zero artist-less displays across 127 unique queued videos. The full catalog is not complete. Backend activation of these last context-selection changes awaits another authorized restart; the CLI already uses them. See the plan for current status and evidence.
+
 ## HASACOOL presenter for the YouTube queue
 
 The backend owns a persistent SSH input reader on the Pi.
@@ -508,6 +558,7 @@ Important vars:
 - `SHOW_MANAGER_RASP_SSH_TARGET`
 - `SHOW_MANAGER_PUBLIC_BASE_URL`
 - `YOUTUBE_DATA_API_KEY` optional secret for YouTube Data API video search and paginated playlist fetching.
+- `OPENROUTER_API_KEY` optional server-only secret for new video title cleanup and the explicit existing-data cleanup command.
 
 ### YouTube Data API key
 

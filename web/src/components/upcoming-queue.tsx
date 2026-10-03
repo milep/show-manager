@@ -3,7 +3,11 @@ import type { YoutubeQueueItem, YoutubeQueueState } from "../../../shared/show-s
 import { Button } from "@/components/ui/button";
 
 export function queueTitle(item: YoutubeQueueItem) {
-  return [item.artist ?? item.channel, item.title ?? item.videoId].filter(Boolean).join(" - ");
+  if (item.displayTitle) return item.displayTitle;
+  if (!item.title) return item.videoId;
+  const artist = item.artist?.trim();
+  if (artist && !item.title.toLocaleLowerCase().startsWith(`${artist.toLocaleLowerCase()} - `)) return `${artist} - ${item.title}`;
+  return item.title;
 }
 
 type UpcomingQueueProps = {

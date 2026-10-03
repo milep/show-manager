@@ -2,7 +2,7 @@ import { createElement, type ComponentProps, type MouseEvent } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { YoutubeQueueItem, YoutubeQueueState } from "../shared/show-schema";
-import { UpcomingQueue } from "../web/src/components/upcoming-queue";
+import { queueTitle, UpcomingQueue } from "../web/src/components/upcoming-queue";
 import type { Button } from "../web/src/components/ui/button";
 
 const { buttons } = vi.hoisted(() => ({ buttons: [] as ComponentProps<typeof Button>[] }));
@@ -20,7 +20,7 @@ vi.mock("@/components/ui/button", async (importOriginal) => {
 function item(id: string): YoutubeQueueItem {
   return {
     id, mediaItemId: "shared-source", videoId: "GF3wagWwHjM", url: "https://www.youtube.com/watch?v=GF3wagWwHjM",
-    title: "Same title", artist: "Artist", album: "Album", channel: null, subtitle: "Artist",
+    title: "Same title", displayTitle: null, artist: "Artist", album: "Album", channel: null, subtitle: "Artist",
     addedAt: "2026-01-01T00:00:00.000Z", startedAt: null, completedAt: null,
   };
 }
@@ -36,6 +36,18 @@ function render(items: YoutubeQueueItem[], currentItemId: string | null = null, 
 beforeEach(() => { buttons.length = 0; });
 
 describe("Upcoming queue controls", () => {
+  it("shows display titles once, then source titles and video IDs without channel prefixes", () => {
+    const cleaned = { ...item("clean"), title: "Label - Artist - Song (OFFICIAL VIDEO)", channel: "Label", artist: null, displayTitle: "Artist - Song" };
+    expect(queueTitle(cleaned)).toBe("Artist - Song");
+    expect(render([cleaned]).html).not.toContain("Label");
+    expect(queueTitle({ ...cleaned, displayTitle: null })).toBe(cleaned.title);
+    expect(queueTitle({ ...cleaned, displayTitle: null, title: null })).toBe(cleaned.videoId);
+  });
+  it("uses real structured artist fallback without duplication or record-label/channel prefixes", () => {
+    expect(queueTitle({ ...item("song"), title: "Song", channel: "Nuclear Blast Records" })).toBe("Artist - Song");
+    expect(queueTitle({ ...item("song"), title: "Artist - Song" })).toBe("Artist - Song");
+    expect(queueTitle({ ...item("video"), artist: null, title: "The Chosen Legacy", channel: "Nuclear Blast Records" })).toBe("The Chosen Legacy");
+  });
   it("renders accessible entry-specific actions, disables boundaries, and excludes Now Playing", () => {
     const { html, onMove, onRemove } = render([item("playing"), item("first"), item("middle"), item("last")], "playing");
     expect(buttons).toHaveLength(9);

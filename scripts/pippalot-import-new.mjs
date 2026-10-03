@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import Database from "better-sqlite3";
+import { YoutubeTitleService } from "../dist/server/src/services/youtube-title-service.js";
+import { ensureYoutubeTitleColumns, readYoutubeTitle, saveYoutubeTitle } from "../dist/server/src/services/youtube-title-storage.js";
 
 const SOURCE_PLAYLIST_ID = "PLM3I17KSuAh94g74QlLDFMy1RBFuarkjU";
 const CACHED_PLAYLIST_ID = "pippalot";
@@ -105,11 +107,21 @@ try {
   } else {
     const backupFile = `${dbFile}.backup-before-pippalot-import-${new Date().toISOString().replace(/[:.]/g, "-")}`;
     await db.backup(backupFile);
+    ensureYoutubeTitleColumns(db);
+    const titles = new YoutubeTitleService({
+      getVideoTitle: (id) => readYoutubeTitle(db, id),
+      saveVideoTitle: (id, title, options) => saveYoutubeTitle(db, id, title, options),
+    });
+    const prepared = [];
+    for (const item of missing) {
+      const media = await titles.prepare({ sourceId: item.videoId, url: `https://www.youtube.com/watch?v=${item.videoId}`, title: item.title, kind: "video" });
+      prepared.push({ ...item, title: media.title, displayTitle: media.displayTitle });
+    }
     const now = new Date().toISOString();
     const existingMedia = db.prepare("select id from youtube_media where source_id = ?");
     const insertMedia = db.prepare(`
-      insert into youtube_media (id, source_id, url, kind, title, artist, album, channel, duration_ms, thumbnail_url, created_at, updated_at)
-      values (?, ?, ?, 'video', ?, null, null, ?, null, ?, ?, ?)
+      insert into youtube_media (id, source_id, url, kind, title, display_title, artist, album, channel, duration_ms, thumbnail_url, created_at, updated_at)
+      values (?, ?, ?, 'video', ?, ?, null, null, ?, null, ?, ?, ?)
     `);
     const insertPlaylistItem = db.prepare(`
       insert into youtube_playlist_items (id, playlist_id, media_item_id, position, added_at)
@@ -119,11 +131,11 @@ try {
 
     const append = db.transaction(() => {
       let position = positionRow.position;
-      for (const item of missing) {
+      for (const item of prepared) {
         const existing = existingMedia.get(item.videoId);
         const mediaId = existing?.id ?? randomUUID();
         if (!existing) {
-          insertMedia.run(mediaId, item.videoId, `https://www.youtube.com/watch?v=${item.videoId}`, item.title, item.channel, item.thumbnailUrl, now, now);
+          insertMedia.run(mediaId, item.videoId, `https://www.youtube.com/watch?v=${item.videoId}`, item.title, item.displayTitle, item.channel, item.thumbnailUrl, now, now);
         }
         position += 1;
         insertPlaylistItem.run(randomUUID(), CACHED_PLAYLIST_ID, mediaId, position, now);

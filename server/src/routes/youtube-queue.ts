@@ -104,7 +104,8 @@ export function createYoutubeQueueRouter(services: AppServices) {
   router.post("/api/youtube-queue/items", async (request, response, next) => {
     try {
       const body = addSearchResultSchema.parse(request.body);
-      await services.youtubeQueueScheduler.addToQueue(mediaInputFromBody(body), "end");
+      const input = await services.youtubeTitleService.prepare(mediaInputFromBody(body));
+      await services.youtubeQueueScheduler.addToQueue(input, "end");
       response.status(201).json(await buildSnapshot(services));
     } catch (error) {
       handleYoutubeInputError(error, response, next);
@@ -114,7 +115,8 @@ export function createYoutubeQueueRouter(services: AppServices) {
   router.post("/api/youtube-queue/items/next", async (request, response, next) => {
     try {
       const body = addSearchResultSchema.parse(request.body);
-      await services.youtubeQueueScheduler.addToQueue(mediaInputFromBody(body), "next");
+      const input = await services.youtubeTitleService.prepare(mediaInputFromBody(body));
+      await services.youtubeQueueScheduler.addToQueue(input, "next");
       response.status(201).json(await buildSnapshot(services));
     } catch (error) {
       handleYoutubeInputError(error, response, next);
@@ -226,7 +228,7 @@ export function createYoutubeQueueRouter(services: AppServices) {
     }
   });
 
-  router.post("/api/youtube/confirmed-videos/import", (request, response, next) => {
+  router.post("/api/youtube/confirmed-videos/import", async (request, response, next) => {
     try {
       if (!requireTrusted(request, response)) return;
       const body = confirmedVideosImportRequestSchema.parse(request.body);
@@ -234,7 +236,20 @@ export function createYoutubeQueueRouter(services: AppServices) {
         const parsed = youtubeConfirmedVideoInputSchema.safeParse(item);
         return parsed.success ? [parsed.data] : [];
       });
-      const result = services.youtubeStore.importConfirmedVideos(items);
+      const prepared = [];
+      const seen = new Set<string>();
+      for (const item of items) {
+        if (seen.has(item.videoId) || services.youtubeStore.hasConfirmedVideo(item.videoId)) {
+          prepared.push(item);
+          continue;
+        }
+        seen.add(item.videoId);
+        const media = await services.youtubeTitleService.prepare({
+          sourceId: item.videoId, url: `https://www.youtube.com/watch?v=${item.videoId}`, title: item.title ?? null, kind: "video",
+        }, { confirmedSource: true });
+        prepared.push({ ...item, title: item.title ?? media.title ?? undefined, displayTitle: media.displayTitle });
+      }
+      const result = services.youtubeStore.importConfirmedVideos(prepared);
       response.status(201).json({ ...result, invalid: body.items.length - items.length });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -270,16 +285,17 @@ export function createYoutubeQueueRouter(services: AppServices) {
     response.status(204).send();
   });
 
-  router.post("/api/youtube/playlists/pippalot/items", (request, response, next) => {
+  router.post("/api/youtube/playlists/pippalot/items", async (request, response, next) => {
     try {
       if (!requireTrusted(request, response)) return;
       const body = pippalotAddRequestSchema.parse(request.body);
       const parsed = parseYoutubeLink(body.url);
-      const result = services.youtubeStore.addToPippalot({
+      const input = await services.youtubeTitleService.prepare({
         sourceId: parsed.videoId,
         url: parsed.canonicalUrl,
         kind: "video",
       });
+      const result = services.youtubeStore.addToPippalot(input);
       response.status(result.outcome === "added" ? 201 : 200).json(result);
     } catch (error) {
       if (error instanceof PippalotPlaylistError) {
